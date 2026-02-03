@@ -1,0 +1,12 @@
+{
+  "name": "liblogos-execution-zone-wallet-module",
+  "version": "1.0.0",
+  "description": "Logos Execution Zone Wallet Module for Logos Core",
+  "author": "Logos Blockchain Team",
+  "type": "blockchain",
+  "category": "blockchain",
+  "main": "LogosExecutionZoneWalletModule",
+  "dependencies": [],
+  "capabilities": [],
+  "include": ["libnomos.dylib"]
+}

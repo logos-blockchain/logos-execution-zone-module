@@ -1,0 +1,12 @@
+.idea/
+.qt/
+*.bak
+
+# CMake generated files
+.cache/
+build/
+target/
+result
+
+# Node
+resources/
