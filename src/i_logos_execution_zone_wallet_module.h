@@ -1,5 +1,5 @@
-#ifndef I_LOGOS_EXECUTION_ZONE_WALLET_MODULE_API_H
-#define I_LOGOS_EXECUTION_ZONE_WALLET_MODULE_API_H
+#ifndef I_LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
+#define I_LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
 
 #include <core/interface.h>
 
@@ -17,7 +17,7 @@ public:
 
     // === Logos Core ===
 
-    virtual void initLogos(LogosAPI* logosAPIInstance) = 0;
+    virtual void initLogos(LogosAPI* logosApiInstance) = 0;
 
     // === Logos Execution Zone Wallet ===
 
