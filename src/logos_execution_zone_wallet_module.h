@@ -16,7 +16,7 @@ private:
     LogosAPI* logosApi = nullptr;
 
 public:
-    explicit LogosExecutionZoneWalletModule(LogosAPI* logosApi);
+    LogosExecutionZoneWalletModule();
     ~LogosExecutionZoneWalletModule() override;
 
     // === Plugin Interface ===
@@ -25,7 +25,7 @@ public:
 
     //  === Logos Core ===
 
-    Q_INVOKABLE void initLogos(LogosAPI* logosAPIInstance) override;
+    Q_INVOKABLE void initLogos(LogosAPI* logosApiInstance) override;
 
     //  === Logos Execution Zone Wallet  ===
 

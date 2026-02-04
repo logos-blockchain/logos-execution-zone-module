@@ -1,14 +1,8 @@
-#ifndef LOGOS_EXECUTION_ZONE_WALLET_MODULE_API_CPP
-#define LOGOS_EXECUTION_ZONE_WALLET_MODULE_API_CPP
-
 #include "logos_execution_zone_wallet_module.h"
 
 #include <QtCore/QDebug>
 
-LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule(LogosAPI* logosApi) {
-    this->logosApi = logosApi;
-}
-
+LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() = default;
 LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() = default;
 
 // === Plugin Interface ===
@@ -23,16 +17,13 @@ QString LogosExecutionZoneWalletModule::version() const {
 
 // === Logos Core ===
 
-void LogosExecutionZoneWalletModule::initLogos(LogosAPI* logosAPIInstance) {
-    logosApi = logosAPIInstance;
+void LogosExecutionZoneWalletModule::initLogos(LogosAPI* logosApiInstance) {
+    logosApi = logosApiInstance;
 }
 
 // === Account Management ===
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_public(
-    WalletHandle* handle,
-    FfiBytes32* out_account_id
-) {
+WalletFfiError LogosExecutionZoneWalletModule::create_account_public(WalletHandle* handle, FfiBytes32* out_account_id) {
     return wallet_ffi_create_account_public(handle, out_account_id);
 }
 
@@ -43,10 +34,7 @@ WalletFfiError LogosExecutionZoneWalletModule::create_account_private(
     return wallet_ffi_create_account_private(handle, out_account_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::list_accounts(
-    WalletHandle* handle,
-    FfiAccountList* out_list
-) {
+WalletFfiError LogosExecutionZoneWalletModule::list_accounts(WalletHandle* handle, FfiAccountList* out_list) {
     return wallet_ffi_list_accounts(handle, out_list);
 }
 
@@ -59,12 +47,12 @@ void LogosExecutionZoneWalletModule::free_account_list(FfiAccountList* list) {
 WalletFfiError LogosExecutionZoneWalletModule::get_balance(
     WalletHandle* handle,
     const FfiBytes32* account_id,
-    bool is_public,
+    const bool is_public,
     QByteArray* out_balance_le16
 ) {
     uint8_t balance[16] = {0};
 
-    WalletFfiError err = wallet_ffi_get_balance(handle, account_id, is_public, &balance);
+    const WalletFfiError err = wallet_ffi_get_balance(handle, account_id, is_public, &balance);
     if (err == SUCCESS && out_balance_le16) {
         *out_balance_le16 = QByteArray(reinterpret_cast<const char*>(balance), 16);
     }
@@ -121,23 +109,17 @@ WalletFfiError LogosExecutionZoneWalletModule::account_id_from_base58(
     const QString& base58_str,
     FfiBytes32* out_account_id
 ) {
-    QByteArray utf8 = base58_str.toUtf8();
+    const QByteArray utf8 = base58_str.toUtf8();
     return wallet_ffi_account_id_from_base58(utf8.constData(), out_account_id);
 }
 
 // === Blockchain Synchronisation ===
 
-WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(
-    WalletHandle* handle,
-    uint64_t block_id
-) {
+WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(WalletHandle* handle, const uint64_t block_id) {
     return wallet_ffi_sync_to_block(handle, block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(
-    WalletHandle* handle,
-    uint64_t* out_block_id
-) {
+WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(WalletHandle* handle, uint64_t* out_block_id) {
     return wallet_ffi_get_last_synced_block(handle, out_block_id);
 }
 
@@ -162,10 +144,10 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
         return SERIALIZATION_ERROR;
     }
 
-    const uint8_t (*amount_ptr)[16] =
-        reinterpret_cast<const uint8_t(*)[16]>(amount_le16.constData());
+    uint8_t amount[16];
+    memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_public(handle, from, to, amount_ptr, out_result);
+    return wallet_ffi_transfer_public(handle, from, to, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
@@ -187,23 +169,16 @@ WalletHandle* LogosExecutionZoneWalletModule::create_new(
     const QString& storage_path,
     const QString& password
 ) {
-    QByteArray config_utf8 = config_path.toUtf8();
-    QByteArray storage_utf8 = storage_path.toUtf8();
-    QByteArray password_utf8 = password.toUtf8();
+    const QByteArray config_utf8 = config_path.toUtf8();
+    const QByteArray storage_utf8 = storage_path.toUtf8();
+    const QByteArray password_utf8 = password.toUtf8();
 
-    return wallet_ffi_create_new(
-        config_utf8.constData(),
-        storage_utf8.constData(),
-        password_utf8.constData()
-    );
+    return wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
 }
 
-WalletHandle* LogosExecutionZoneWalletModule::open(
-    const QString& config_path,
-    const QString& storage_path
-) {
-    QByteArray config_utf8 = config_path.toUtf8();
-    QByteArray storage_utf8 = storage_path.toUtf8();
+WalletHandle* LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
+    const QByteArray config_utf8 = config_path.toUtf8();
+    const QByteArray storage_utf8 = storage_path.toUtf8();
 
     return wallet_ffi_open(config_utf8.constData(), storage_utf8.constData());
 }
@@ -234,5 +209,3 @@ QString LogosExecutionZoneWalletModule::get_sequencer_addr(WalletHandle* handle)
 void LogosExecutionZoneWalletModule::free_string(char* ptr) {
     wallet_ffi_free_string(ptr);
 }
-
-#endif
