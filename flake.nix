@@ -82,6 +82,7 @@
         };
         in
         {
+          lib = logosExecutionZoneModulePackage;
           module = logosExecutionZoneModulePackage;
           default = logosExecutionZoneModulePackage;
         }
