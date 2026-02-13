@@ -7,7 +7,7 @@
     logos-liblogos.url = "github:logos-co/logos-liblogos";
     logos-core.url = "github:logos-co/logos-cpp-sdk";
 
-    logos-execution-zone.url = "github:logos-blockchain/lssa?ref=feat/nixify";
+    logos-execution-zone.url = "github:logos-blockchain/lssa";
 
     logos-module-viewer.url = "github:logos-co/logos-module-viewer";
   };
@@ -45,7 +45,7 @@
           logosCore = logos-core.packages.${system}.default;
           logosExecutionZoneWalletPackage = logos-execution-zone.packages.${system}.wallet;
 
-          logosExecutionZoneModulePackage = pkgs.stdenv.mkDerivation {
+          logosExecutionZoneWalletModulePackage = pkgs.stdenv.mkDerivation {
             pname = "logos-execution-zone-module";
             version = "dev";
             src = ./.;
@@ -82,9 +82,8 @@
         };
         in
         {
-          lib = logosExecutionZoneModulePackage;
-          module = logosExecutionZoneModulePackage;
-          default = logosExecutionZoneModulePackage;
+          lib = logosExecutionZoneWalletModulePackage;
+          default = logosExecutionZoneWalletModulePackage;
         }
       );
 
@@ -92,21 +91,23 @@
         system:
         let
           pkgs = mkPkgs system;
-          logosExecutionZoneModulePackage = self.packages.${system}.module;
+          logosExecutionZoneWalletModuleLib = self.packages.${system}.lib;
           logosModuleViewerPackage = logos-module-viewer.packages.${system}.default;
           extension = if pkgs.stdenv.isDarwin then "dylib"
             else if pkgs.stdenv.hostPlatform.isWindows then "dll"
             else "so";
-        in
-        {
-          default = {
+          inspectModule = {
             type = "app";
             program =
               "${pkgs.writeShellScriptBin "inspect-module" ''
                 exec ${logosModuleViewerPackage}/bin/logos-module-viewer \
-                  --module ${logosExecutionZoneModulePackage}/lib/liblogos-execution-zone-wallet-module.${extension}
+                  --module ${logosExecutionZoneWalletModuleLib}/lib/liblogos-execution-zone-wallet-module.${extension}
               ''}/bin/inspect-module";
           };
+        in
+        {
+          inspect-module = inspectModule;
+          default = inspectModule;
         }
       );
 
