@@ -152,15 +152,12 @@ add_library(logos_cpp_sdk INTERFACE)
 target_include_directories(logos_cpp_sdk INTERFACE "${SDK_INC}")
 
 # ---- Plugin ----
-set(PLUGIN_TARGET liblogos-execution-zone-wallet-module)
+set(PLUGIN_TARGET logos-execution-zone-wallet-module)
 
 qt_add_plugin(${PLUGIN_TARGET} CLASS_NAME LogosExecutionZoneWalletModule)
 
 target_sources(${PLUGIN_TARGET} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/i_logos_execution_zone_wallet_module.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/logos_execution_zone_wallet_module.h
         ${CMAKE_CURRENT_SOURCE_DIR}/src/logos_execution_zone_wallet_module.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/metadata.json
 )
 
 set_property(TARGET ${PLUGIN_TARGET} PROPERTY PUBLIC_HEADER
@@ -206,4 +203,3 @@ install(TARGETS ${PLUGIN_TARGET}
 )
 install(DIRECTORY "${LOGOS_EXECUTION_ZONE_WALLET_INCLUDE}/" DESTINATION include)
 install(FILES "${LOGOS_EXECUTION_ZONE_DYLIB}" DESTINATION lib)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/metadata.json" DESTINATION lib)
