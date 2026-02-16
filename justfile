@@ -10,9 +10,9 @@ build: configure
     cmake --build build --parallel --target liblogos-execution-zone-wallet-module
 
 clean:
-    rm -rf build target
+    rm -rf build result
 
-rebuild: clean configure build
+rebuild: clean build
 
 nix:
     nix develop
