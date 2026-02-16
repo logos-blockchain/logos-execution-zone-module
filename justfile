@@ -17,5 +17,8 @@ rebuild: clean configure build
 nix:
     nix develop
 
+prettify:
+    nix shell nixpkgs#clang-tools -c clang-format -i src/**.cpp src/**.h
+
 unicode-logs file:
     perl -pe 's/\\u([0-9A-Fa-f]{4})/chr(hex($1))/ge' {{file}} | less -R

@@ -22,3 +22,5 @@ AllowShortLoopsOnASingleLine: false
 
 BreakAfterReturnType: None
 PenaltyReturnTypeOnItsOwnLine: 1000
+
+NamespaceIndentation: All
