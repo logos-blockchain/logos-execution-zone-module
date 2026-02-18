@@ -10,12 +10,15 @@ build: configure
     cmake --build build --parallel --target liblogos-execution-zone-wallet-module
 
 clean:
-    rm -rf build target
+    rm -rf build result
 
-rebuild: clean configure build
+rebuild: clean build
 
 nix:
     nix develop
+
+prettify:
+    nix shell nixpkgs#clang-tools -c clang-format -i src/**.cpp src/**.h
 
 unicode-logs file:
     perl -pe 's/\\u([0-9A-Fa-f]{4})/chr(hex($1))/ge' {{file}} | less -R

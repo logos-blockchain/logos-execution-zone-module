@@ -36,27 +36,20 @@ public:
     Q_INVOKABLE WalletFfiError list_accounts(QJsonArray& output_list) override;
 
     // Account Queries
-    Q_INVOKABLE WalletFfiError get_balance(
-        const QString& account_id_hex,
-        bool is_public,
-        QString& output_balance_le16_hex
-    ) override;
     Q_INVOKABLE WalletFfiError
-    get_account_public(const QString& account_id_hex, QString& output_account_json) override;
+    get_balance(const QString& account_id_hex, bool is_public, QString& output_balance_le16_hex) override;
+    Q_INVOKABLE WalletFfiError get_account_public(const QString& account_id_hex, QString& output_account_json) override;
     Q_INVOKABLE WalletFfiError
     get_account_private(const QString& account_id_hex, QString& output_account_json) override;
-    Q_INVOKABLE WalletFfiError get_public_account_key(
-        const QString& account_id_hex,
-        QString& output_public_key_hex
-    ) override;
-    Q_INVOKABLE WalletFfiError get_private_account_keys(
-        const QString& account_id_hex,
-        QString& output_keys_json
-    ) override;
+    Q_INVOKABLE WalletFfiError
+    get_public_account_key(const QString& account_id_hex, QString& output_public_key_hex) override;
+    Q_INVOKABLE WalletFfiError
+    get_private_account_keys(const QString& account_id_hex, QString& output_keys_json) override;
 
     // Account Encoding
     Q_INVOKABLE QString account_id_to_base58(const QString& account_id_hex) override;
-    Q_INVOKABLE WalletFfiError account_id_from_base58(const QString& base58_str, QString& output_account_id_hex) override;
+    Q_INVOKABLE WalletFfiError
+    account_id_from_base58(const QString& base58_str, QString& output_account_id_hex) override;
 
     // Blockchain Synchronisation
     Q_INVOKABLE WalletFfiError sync_to_block(uint64_t block_id) override;
@@ -106,11 +99,8 @@ public:
     register_private_account(const QString& account_id_hex, QString& output_result_json) override;
 
     // Wallet Lifecycle
-    Q_INVOKABLE WalletFfiError create_new(
-        const QString& config_path,
-        const QString& storage_path,
-        const QString& password
-    ) override;
+    Q_INVOKABLE WalletFfiError
+    create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
     Q_INVOKABLE WalletFfiError open(const QString& config_path, const QString& storage_path) override;
     Q_INVOKABLE WalletFfiError save() override;
 

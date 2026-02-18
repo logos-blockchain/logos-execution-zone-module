@@ -12,31 +12,35 @@ static QString bytesToHex(const uint8_t* data, const size_t length) {
 }
 
 namespace JsonKeys {
-    static constexpr auto TxHash = "tx_hash";
-    static constexpr auto Success = "success";
-    static constexpr auto ProgramOwner = "program_owner";
-    static constexpr auto Balance = "balance";
-    static constexpr auto Nonce = "nonce";
-    static constexpr auto Data = "data";
-    static constexpr auto NullifierPublicKey = "nullifier_public_key";
-    static constexpr auto ViewingPublicKey = "viewing_public_key";
-    static constexpr auto AccountId = "account_id";
-    static constexpr auto IsPublic = "is_public";
-}
+static constexpr auto TxHash = "tx_hash";
+static constexpr auto Success = "success";
+static constexpr auto ProgramOwner = "program_owner";
+static constexpr auto Balance = "balance";
+static constexpr auto Nonce = "nonce";
+static constexpr auto Data = "data";
+static constexpr auto NullifierPublicKey = "nullifier_public_key";
+static constexpr auto ViewingPublicKey = "viewing_public_key";
+static constexpr auto AccountId = "account_id";
+static constexpr auto IsPublic = "is_public";
+} // namespace JsonKeys
 
 static bool hexToBytes(const QString& hex, QByteArray& output_bytes, int expectedLength = -1) {
     QString trimmed_hex = hex.trimmed();
-    if (trimmed_hex.startsWith("0x", Qt::CaseInsensitive)) trimmed_hex = trimmed_hex.mid(2);
-    if (trimmed_hex.size() % 2 != 0) return false;
+    if (trimmed_hex.startsWith("0x", Qt::CaseInsensitive))
+        trimmed_hex = trimmed_hex.mid(2);
+    if (trimmed_hex.size() % 2 != 0)
+        return false;
     const QByteArray decoded = QByteArray::fromHex(trimmed_hex.toLatin1());
-    if (expectedLength != -1 && decoded.size() != expectedLength) return false;
+    if (expectedLength != -1 && decoded.size() != expectedLength)
+        return false;
     output_bytes = decoded;
     return true;
 }
 
 static bool hexToU128(const QString& hex, uint8_t (*output)[16]) {
     QByteArray buffer;
-    if (!hexToBytes(hex, buffer, 16)) return false;
+    if (!hexToBytes(hex, buffer, 16))
+        return false;
     memcpy(output, buffer.constData(), 16);
     return true;
 }
@@ -46,9 +50,11 @@ static QString bytes32ToHex(const FfiBytes32& bytes) {
 }
 
 static bool hexToBytes32(const QString& hex, FfiBytes32* output_bytes) {
-    if (output_bytes == nullptr) return false;
+    if (output_bytes == nullptr)
+        return false;
     QByteArray buffer;
-    if (!hexToBytes(hex, buffer, 32)) return false;
+    if (!hexToBytes(hex, buffer, 32))
+        return false;
     memcpy(output_bytes->data, buffer.constData(), 32);
     return true;
 }
@@ -93,17 +99,20 @@ static QString ffiPrivateAccountKeysToJson(const FfiPrivateAccountKeys& keys) {
 
 static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKeys* output_keys) {
     QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
-    if (!doc.isObject()) return false;
+    if (!doc.isObject())
+        return false;
     const QVariantMap map = doc.object().toVariantMap();
-    
+
     if (map.contains(JsonKeys::NullifierPublicKey)) {
-        if (!hexToBytes32(map[JsonKeys::NullifierPublicKey].toString(), &output_keys->nullifier_public_key)) return false;
+        if (!hexToBytes32(map[JsonKeys::NullifierPublicKey].toString(), &output_keys->nullifier_public_key))
+            return false;
     }
 
     if (map.contains(JsonKeys::ViewingPublicKey)) {
         QByteArray buffer;
-        if (!hexToBytes(map[JsonKeys::ViewingPublicKey].toString(), buffer)) return false;
-        
+        if (!hexToBytes(map[JsonKeys::ViewingPublicKey].toString(), buffer))
+            return false;
+
         uint8_t* data = static_cast<uint8_t*>(malloc(buffer.size()));
         memcpy(data, buffer.constData(), buffer.size());
         output_keys->viewing_public_key = data;
@@ -112,7 +121,7 @@ static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKe
         output_keys->viewing_public_key = nullptr;
         output_keys->viewing_public_key_len = 0;
     }
-    
+
     return true;
 }
 
@@ -362,7 +371,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
         output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
-    
+
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     return error;
 }
@@ -422,7 +431,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
         output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
-    
+
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     return error;
 }

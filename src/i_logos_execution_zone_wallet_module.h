@@ -32,22 +32,10 @@ public:
         bool is_public,
         QString& output_balance_le16_hex
     ) = 0;
-    virtual WalletFfiError get_account_public(
-        const QString& account_id_hex,
-        QString& output_account_json
-    ) = 0;
-    virtual WalletFfiError get_account_private(
-        const QString& account_id_hex,
-        QString& output_account_json
-    ) = 0;
-    virtual WalletFfiError get_public_account_key(
-        const QString& account_id_hex,
-        QString& output_public_key_hex
-    ) = 0;
-    virtual WalletFfiError get_private_account_keys(
-        const QString& account_id_hex,
-        QString& output_keys_json
-    ) = 0;
+    virtual WalletFfiError get_account_public(const QString& account_id_hex, QString& output_account_json) = 0;
+    virtual WalletFfiError get_account_private(const QString& account_id_hex, QString& output_account_json) = 0;
+    virtual WalletFfiError get_public_account_key(const QString& account_id_hex, QString& output_public_key_hex) = 0;
+    virtual WalletFfiError get_private_account_keys(const QString& account_id_hex, QString& output_keys_json) = 0;
 
     // Account Encoding
     virtual QString account_id_to_base58(const QString& account_id_hex) = 0;
@@ -95,14 +83,8 @@ public:
         const QString& amount_le16_hex,
         QString& output_result_json
     ) = 0;
-    virtual WalletFfiError register_public_account(
-        const QString& account_id_hex,
-        QString& output_result_json
-    ) = 0;
-    virtual WalletFfiError register_private_account(
-        const QString& account_id_hex,
-        QString& output_result_json
-    ) = 0;
+    virtual WalletFfiError register_public_account(const QString& account_id_hex, QString& output_result_json) = 0;
+    virtual WalletFfiError register_private_account(const QString& account_id_hex, QString& output_result_json) = 0;
 
     // Wallet Lifecycle
     virtual WalletFfiError create_new(
