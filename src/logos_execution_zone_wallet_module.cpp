@@ -91,13 +91,13 @@ static QString ffiPrivateAccountKeysToJson(const FfiPrivateAccountKeys& keys) {
     return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
 }
 
-static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKeys* out_keys) {
+static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKeys* output_keys) {
     QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
     if (!doc.isObject()) return false;
     const QVariantMap map = doc.object().toVariantMap();
     
     if (map.contains(JsonKeys::NullifierPublicKey)) {
-        if (!hexToBytes32(map[JsonKeys::NullifierPublicKey].toString(), &out_keys->nullifier_public_key)) return false;
+        if (!hexToBytes32(map[JsonKeys::NullifierPublicKey].toString(), &output_keys->nullifier_public_key)) return false;
     }
 
     if (map.contains(JsonKeys::ViewingPublicKey)) {
@@ -106,11 +106,11 @@ static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKe
         
         uint8_t* data = static_cast<uint8_t*>(malloc(buffer.size()));
         memcpy(data, buffer.constData(), buffer.size());
-        out_keys->viewing_public_key = data;
-        out_keys->viewing_public_key_len = buffer.size();
+        output_keys->viewing_public_key = data;
+        output_keys->viewing_public_key_len = buffer.size();
     } else {
-        out_keys->viewing_public_key = nullptr;
-        out_keys->viewing_public_key_len = 0;
+        output_keys->viewing_public_key = nullptr;
+        output_keys->viewing_public_key_len = 0;
     }
     
     return true;
@@ -143,30 +143,30 @@ void LogosExecutionZoneWalletModule::initLogos(LogosAPI* logosApiInstance) {
 
 // === Account Management ===
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_public(QString& out_account_id_hex) {
+WalletFfiError LogosExecutionZoneWalletModule::create_account_public(QString& output_account_id_hex) {
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_create_account_public(walletHandle, &id);
     if (error == SUCCESS) {
-        out_account_id_hex = bytes32ToHex(id);
+        output_account_id_hex = bytes32ToHex(id);
     }
     return error;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_private(QString& out_account_id_hex) {
+WalletFfiError LogosExecutionZoneWalletModule::create_account_private(QString& output_account_id_hex) {
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_create_account_private(walletHandle, &id);
     if (error == SUCCESS) {
-        out_account_id_hex = bytes32ToHex(id);
+        output_account_id_hex = bytes32ToHex(id);
     }
     return error;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::list_accounts(QJsonArray& out_list) {
+WalletFfiError LogosExecutionZoneWalletModule::list_accounts(QJsonArray& output_list) {
     FfiAccountList list{};
     const WalletFfiError error = wallet_ffi_list_accounts(walletHandle, &list);
     if (error == SUCCESS) {
         for (uintptr_t i = 0; i < list.count; ++i) {
-            out_list.append(ffiAccountListEntryToJson(list.entries[i]));
+            output_list.append(ffiAccountListEntryToJson(list.entries[i]));
         }
         wallet_ffi_free_account_list(&list);
     }
@@ -178,7 +178,7 @@ WalletFfiError LogosExecutionZoneWalletModule::list_accounts(QJsonArray& out_lis
 WalletFfiError LogosExecutionZoneWalletModule::get_balance(
     const QString& account_id_hex,
     const bool is_public,
-    QString& out_balance_le16_hex
+    QString& output_balance_le16_hex
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -188,14 +188,14 @@ WalletFfiError LogosExecutionZoneWalletModule::get_balance(
     uint8_t balance[16] = {0};
     const WalletFfiError error = wallet_ffi_get_balance(walletHandle, &id, is_public, &balance);
     if (error == SUCCESS) {
-        out_balance_le16_hex = bytesToHex(balance, 16);
+        output_balance_le16_hex = bytesToHex(balance, 16);
     }
     return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_account_public(
     const QString& account_id_hex,
-    QString& out_account_json
+    QString& output_account_json
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -204,7 +204,7 @@ WalletFfiError LogosExecutionZoneWalletModule::get_account_public(
     FfiAccount account{};
     const WalletFfiError error = wallet_ffi_get_account_public(walletHandle, &id, &account);
     if (error == SUCCESS) {
-        out_account_json = ffiAccountToJson(account);
+        output_account_json = ffiAccountToJson(account);
         wallet_ffi_free_account_data(&account);
     }
     return error;
@@ -212,7 +212,7 @@ WalletFfiError LogosExecutionZoneWalletModule::get_account_public(
 
 WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
     const QString& account_id_hex,
-    QString& out_account_json
+    QString& output_account_json
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -221,7 +221,7 @@ WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
     FfiAccount account{};
     const WalletFfiError error = wallet_ffi_get_account_private(walletHandle, &id, &account);
     if (error == SUCCESS) {
-        out_account_json = ffiAccountToJson(account);
+        output_account_json = ffiAccountToJson(account);
         wallet_ffi_free_account_data(&account);
     }
     return error;
@@ -229,7 +229,7 @@ WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
 
 WalletFfiError LogosExecutionZoneWalletModule::get_public_account_key(
     const QString& account_id_hex,
-    QString& out_public_key_hex
+    QString& output_public_key_hex
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -238,14 +238,14 @@ WalletFfiError LogosExecutionZoneWalletModule::get_public_account_key(
     FfiPublicAccountKey key{};
     const WalletFfiError error = wallet_ffi_get_public_account_key(walletHandle, &id, &key);
     if (error == SUCCESS) {
-        out_public_key_hex = bytes32ToHex(key.public_key);
+        output_public_key_hex = bytes32ToHex(key.public_key);
     }
     return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_private_account_keys(
     const QString& account_id_hex,
-    QString& out_keys_json
+    QString& output_keys_json
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -254,7 +254,7 @@ WalletFfiError LogosExecutionZoneWalletModule::get_private_account_keys(
     FfiPrivateAccountKeys keys{};
     const WalletFfiError error = wallet_ffi_get_private_account_keys(walletHandle, &id, &keys);
     if (error == SUCCESS) {
-        out_keys_json = ffiPrivateAccountKeysToJson(keys);
+        output_keys_json = ffiPrivateAccountKeysToJson(keys);
         wallet_ffi_free_private_account_keys(&keys);
     }
     return error;
@@ -280,13 +280,13 @@ QString LogosExecutionZoneWalletModule::account_id_to_base58(const QString& acco
 
 WalletFfiError LogosExecutionZoneWalletModule::account_id_from_base58(
     const QString& base58_str,
-    QString& out_account_id_hex
+    QString& output_account_id_hex
 ) {
     FfiBytes32 id{};
     const QByteArray utf8 = base58_str.toUtf8();
     const WalletFfiError error = wallet_ffi_account_id_from_base58(utf8.constData(), &id);
     if (error == SUCCESS) {
-        out_account_id_hex = bytes32ToHex(id);
+        output_account_id_hex = bytes32ToHex(id);
     }
     return error;
 }
@@ -297,12 +297,12 @@ WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(const uint64_t bloc
     return wallet_ffi_sync_to_block(walletHandle, block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(uint64_t* out_block_id) {
-    return wallet_ffi_get_last_synced_block(walletHandle, out_block_id);
+WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(uint64_t* output_block_id) {
+    return wallet_ffi_get_last_synced_block(walletHandle, output_block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_current_block_height(uint64_t* out_block_height) {
-    return wallet_ffi_get_current_block_height(walletHandle, out_block_height);
+WalletFfiError LogosExecutionZoneWalletModule::get_current_block_height(uint64_t* output_block_height) {
+    return wallet_ffi_get_current_block_height(walletHandle, output_block_height);
 }
 
 // === Operations ===
@@ -311,7 +311,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
     const QString& from_hex,
     const QString& to_hex,
     const QString& amount_le16_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
@@ -327,7 +327,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_transfer_public(walletHandle, &fromId, &toId, &amount, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     return error;
@@ -337,7 +337,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
     const QString& from_hex,
     const QString& to_keys_json,
     const QString& amount_le16_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 fromId{};
     if (!hexToBytes32(from_hex, &fromId)) {
@@ -359,7 +359,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &amount, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     
@@ -371,7 +371,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_deshielded(
     const QString& from_hex,
     const QString& to_hex,
     const QString& amount_le16_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
@@ -387,7 +387,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_deshielded(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_transfer_deshielded(walletHandle, &fromId, &toId, &amount, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     return error;
@@ -397,7 +397,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
     const QString& from_hex,
     const QString& to_keys_json,
     const QString& amount_le16_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 fromId{};
     if (!hexToBytes32(from_hex, &fromId)) {
@@ -419,7 +419,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &amount, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     
@@ -431,7 +431,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded_owned(
     const QString& from_hex,
     const QString& to_hex,
     const QString& amount_le16_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
@@ -447,7 +447,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded_owned(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     return error;
@@ -457,7 +457,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
     const QString& from_hex,
     const QString& to_hex,
     const QString& amount_le16_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
@@ -473,7 +473,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_transfer_private_owned(walletHandle, &fromId, &toId, &amount, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     return error;
@@ -481,7 +481,7 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
 
 WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
     const QString& account_id_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -490,7 +490,7 @@ WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_register_public_account(walletHandle, &id, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     return error;
@@ -498,7 +498,7 @@ WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
 
 WalletFfiError LogosExecutionZoneWalletModule::register_private_account(
     const QString& account_id_hex,
-    QString& out_result_json
+    QString& output_result_json
 ) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
@@ -507,7 +507,7 @@ WalletFfiError LogosExecutionZoneWalletModule::register_private_account(
     FfiTransferResult result{};
     const WalletFfiError error = wallet_ffi_register_private_account(walletHandle, &id, &result);
     if (error == SUCCESS) {
-        out_result_json = ffiTransferResultToJson(result);
+        output_result_json = ffiTransferResultToJson(result);
         wallet_ffi_free_transfer_result(&result);
     }
     return error;
