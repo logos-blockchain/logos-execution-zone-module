@@ -22,36 +22,36 @@ public:
     // === Logos Execution Zone Wallet ===
 
     // Account Management
-    virtual WalletFfiError create_account_public(FfiBytes32* out_account_id) = 0;
-    virtual WalletFfiError create_account_private(FfiBytes32* out_account_id) = 0;
+    virtual WalletFfiError create_account_public(QString& out_account_id_hex) = 0;
+    virtual WalletFfiError create_account_private(QString& out_account_id_hex) = 0;
     virtual WalletFfiError list_accounts(FfiAccountList* out_list) = 0;
 
     // Account Queries
     virtual WalletFfiError get_balance(
-        const FfiBytes32* account_id,
+        const QString& account_id_hex,
         bool is_public,
-        QByteArray* out_balance_le16
+        QString& out_balance_le16_hex
     ) = 0;
     virtual WalletFfiError get_account_public(
-        const FfiBytes32* account_id,
+        const QString& account_id_hex,
         FfiAccount* out_account
     ) = 0;
     virtual WalletFfiError get_account_private(
-        const FfiBytes32* account_id,
+        const QString& account_id_hex,
         FfiAccount* out_account
     ) = 0;
     virtual WalletFfiError get_public_account_key(
-        const FfiBytes32* account_id,
-        FfiPublicAccountKey* out_public_key
+        const QString& account_id_hex,
+        QString& out_public_key_hex
     ) = 0;
     virtual WalletFfiError get_private_account_keys(
-        const FfiBytes32* account_id,
+        const QString& account_id_hex,
         FfiPrivateAccountKeys* out_keys
     ) = 0;
 
     // Account Encoding
-    virtual QString account_id_to_base58(const FfiBytes32* account_id) = 0;
-    virtual WalletFfiError account_id_from_base58(const QString& base58_str, FfiBytes32* out_account_id) = 0;
+    virtual QString account_id_to_base58(const QString& account_id_hex) = 0;
+    virtual WalletFfiError account_id_from_base58(const QString& base58_str, QString& out_account_id_hex) = 0;
 
     // Blockchain Synchronisation
     virtual WalletFfiError sync_to_block(uint64_t block_id) = 0;
@@ -60,47 +60,47 @@ public:
 
     // Operations
     virtual WalletFfiError transfer_public(
-        const FfiBytes32* from,
-        const FfiBytes32* to,
-        const QByteArray& amount_le16,
+        const QString& from_hex,
+        const QString& to_hex,
+        const QString& amount_le16_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError transfer_shielded(
-        const FfiBytes32* from,
+        const QString& from_hex,
         const FfiPrivateAccountKeys* to_keys,
-        const QByteArray& amount_le16,
+        const QString& amount_le16_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError transfer_deshielded(
-        const FfiBytes32* from,
-        const FfiBytes32* to,
-        const QByteArray& amount_le16,
+        const QString& from_hex,
+        const QString& to_hex,
+        const QString& amount_le16_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError transfer_private(
-        const FfiBytes32* from,
+        const QString& from_hex,
         const FfiPrivateAccountKeys* to_keys,
-        const QByteArray& amount_le16,
+        const QString& amount_le16_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError transfer_shielded_owned(
-        const FfiBytes32* from,
-        const FfiBytes32* to,
-        const QByteArray& amount_le16,
+        const QString& from_hex,
+        const QString& to_hex,
+        const QString& amount_le16_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError transfer_private_owned(
-        const FfiBytes32* from,
-        const FfiBytes32* to,
-        const QByteArray& amount_le16,
+        const QString& from_hex,
+        const QString& to_hex,
+        const QString& amount_le16_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError register_public_account(
-        const FfiBytes32* account_id,
+        const QString& account_id_hex,
         FfiTransferResult* out_result
     ) = 0;
     virtual WalletFfiError register_private_account(
-        const FfiBytes32* account_id,
+        const QString& account_id_hex,
         FfiTransferResult* out_result
     ) = 0;
 
