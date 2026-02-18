@@ -39,6 +39,11 @@ public:
         const FfiBytes32* account_id,
         FfiAccount* out_account
     ) = 0;
+    virtual WalletFfiError get_account_private(
+        WalletHandle* handle,
+        const FfiBytes32* account_id,
+        FfiAccount* out_account
+    ) = 0;
     virtual void free_account_data(FfiAccount* account) = 0;
     virtual WalletFfiError get_public_account_key(
         WalletHandle* handle,
@@ -69,7 +74,47 @@ public:
         const QByteArray& amount_le16,
         FfiTransferResult* out_result
     ) = 0;
+    virtual WalletFfiError transfer_shielded(
+        WalletHandle* handle,
+        const FfiBytes32* from,
+        const FfiPrivateAccountKeys* to_keys,
+        const QByteArray& amount_le16,
+        FfiTransferResult* out_result
+    ) = 0;
+    virtual WalletFfiError transfer_deshielded(
+        WalletHandle* handle,
+        const FfiBytes32* from,
+        const FfiBytes32* to,
+        const QByteArray& amount_le16,
+        FfiTransferResult* out_result
+    ) = 0;
+    virtual WalletFfiError transfer_private(
+        WalletHandle* handle,
+        const FfiBytes32* from,
+        const FfiPrivateAccountKeys* to_keys,
+        const QByteArray& amount_le16,
+        FfiTransferResult* out_result
+    ) = 0;
+    virtual WalletFfiError transfer_shielded_owned(
+        WalletHandle* handle,
+        const FfiBytes32* from,
+        const FfiBytes32* to,
+        const QByteArray& amount_le16,
+        FfiTransferResult* out_result
+    ) = 0;
+    virtual WalletFfiError transfer_private_owned(
+        WalletHandle* handle,
+        const FfiBytes32* from,
+        const FfiBytes32* to,
+        const QByteArray& amount_le16,
+        FfiTransferResult* out_result
+    ) = 0;
     virtual WalletFfiError register_public_account(
+        WalletHandle* handle,
+        const FfiBytes32* account_id,
+        FfiTransferResult* out_result
+    ) = 0;
+    virtual WalletFfiError register_private_account(
         WalletHandle* handle,
         const FfiBytes32* account_id,
         FfiTransferResult* out_result

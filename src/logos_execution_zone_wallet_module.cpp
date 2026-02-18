@@ -68,6 +68,14 @@ WalletFfiError LogosExecutionZoneWalletModule::get_account_public(
     return wallet_ffi_get_account_public(handle, account_id, out_account);
 }
 
+WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
+    WalletHandle* handle,
+    const FfiBytes32* account_id,
+    FfiAccount* out_account
+) {
+    return wallet_ffi_get_account_private(handle, account_id, out_account);
+}
+
 void LogosExecutionZoneWalletModule::free_account_data(FfiAccount* account) {
     wallet_ffi_free_account_data(account);
 }
@@ -150,12 +158,110 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
     return wallet_ffi_transfer_public(handle, from, to, &amount, out_result);
 }
 
+WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
+    WalletHandle* handle,
+    const FfiBytes32* from,
+    const FfiPrivateAccountKeys* to_keys,
+    const QByteArray& amount_le16,
+    FfiTransferResult* out_result
+) {
+    if (amount_le16.size() != 16) {
+        qWarning() << "transfer_shielded: amount_le16 must be 16 bytes";
+        return SERIALIZATION_ERROR;
+    }
+
+    uint8_t amount[16];
+    memcpy(amount, amount_le16.constData(), 16);
+
+    return wallet_ffi_transfer_shielded(handle, from, to_keys, &amount, out_result);
+}
+
+WalletFfiError LogosExecutionZoneWalletModule::transfer_deshielded(
+    WalletHandle* handle,
+    const FfiBytes32* from,
+    const FfiBytes32* to,
+    const QByteArray& amount_le16,
+    FfiTransferResult* out_result
+) {
+    if (amount_le16.size() != 16) {
+        qWarning() << "transfer_deshielded: amount_le16 must be 16 bytes";
+        return SERIALIZATION_ERROR;
+    }
+
+    uint8_t amount[16];
+    memcpy(amount, amount_le16.constData(), 16);
+
+    return wallet_ffi_transfer_deshielded(handle, from, to, &amount, out_result);
+}
+
+WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
+    WalletHandle* handle,
+    const FfiBytes32* from,
+    const FfiPrivateAccountKeys* to_keys,
+    const QByteArray& amount_le16,
+    FfiTransferResult* out_result
+) {
+    if (amount_le16.size() != 16) {
+        qWarning() << "transfer_private: amount_le16 must be 16 bytes";
+        return SERIALIZATION_ERROR;
+    }
+
+    uint8_t amount[16];
+    memcpy(amount, amount_le16.constData(), 16);
+
+    return wallet_ffi_transfer_private(handle, from, to_keys, &amount, out_result);
+}
+
+WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded_owned(
+    WalletHandle* handle,
+    const FfiBytes32* from,
+    const FfiBytes32* to,
+    const QByteArray& amount_le16,
+    FfiTransferResult* out_result
+) {
+    if (amount_le16.size() != 16) {
+        qWarning() << "transfer_shielded_owned: amount_le16 must be 16 bytes";
+        return SERIALIZATION_ERROR;
+    }
+
+    uint8_t amount[16];
+    memcpy(amount, amount_le16.constData(), 16);
+
+    return wallet_ffi_transfer_shielded_owned(handle, from, to, &amount, out_result);
+}
+
+WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
+    WalletHandle* handle,
+    const FfiBytes32* from,
+    const FfiBytes32* to,
+    const QByteArray& amount_le16,
+    FfiTransferResult* out_result
+) {
+    if (amount_le16.size() != 16) {
+        qWarning() << "transfer_private_owned: amount_le16 must be 16 bytes";
+        return SERIALIZATION_ERROR;
+    }
+
+    uint8_t amount[16];
+    memcpy(amount, amount_le16.constData(), 16);
+
+    return wallet_ffi_transfer_private_owned(handle, from, to, &amount, out_result);
+}
+
 WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
     WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiTransferResult* out_result
 ) {
     return wallet_ffi_register_public_account(handle, account_id, out_result);
+}
+
+WalletFfiError LogosExecutionZoneWalletModule::register_private_account(
+    WalletHandle* handle,
+    const FfiBytes32* account_id,
+    FfiTransferResult* out_result
+) {
+    return wallet_ffi_register_private_account(handle, account_id, out_result);
 }
 
 void LogosExecutionZoneWalletModule::free_transfer_result(FfiTransferResult* result) {
