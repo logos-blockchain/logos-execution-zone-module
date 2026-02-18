@@ -38,10 +38,6 @@ WalletFfiError LogosExecutionZoneWalletModule::list_accounts(WalletHandle* handl
     return wallet_ffi_list_accounts(handle, out_list);
 }
 
-void LogosExecutionZoneWalletModule::free_account_list(FfiAccountList* list) {
-    wallet_ffi_free_account_list(list);
-}
-
 // === Account Queries ===
 
 WalletFfiError LogosExecutionZoneWalletModule::get_balance(
@@ -76,10 +72,6 @@ WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
     return wallet_ffi_get_account_private(handle, account_id, out_account);
 }
 
-void LogosExecutionZoneWalletModule::free_account_data(FfiAccount* account) {
-    wallet_ffi_free_account_data(account);
-}
-
 WalletFfiError LogosExecutionZoneWalletModule::get_public_account_key(
     WalletHandle* handle,
     const FfiBytes32* account_id,
@@ -94,10 +86,6 @@ WalletFfiError LogosExecutionZoneWalletModule::get_private_account_keys(
     FfiPrivateAccountKeys* out_keys
 ) {
     return wallet_ffi_get_private_account_keys(handle, account_id, out_keys);
-}
-
-void LogosExecutionZoneWalletModule::free_private_account_keys(FfiPrivateAccountKeys* keys) {
-    wallet_ffi_free_private_account_keys(keys);
 }
 
 // === Account Encoding ===
@@ -264,10 +252,6 @@ WalletFfiError LogosExecutionZoneWalletModule::register_private_account(
     return wallet_ffi_register_private_account(handle, account_id, out_result);
 }
 
-void LogosExecutionZoneWalletModule::free_transfer_result(FfiTransferResult* result) {
-    wallet_ffi_free_transfer_result(result);
-}
-
 // === Wallet Lifecycle ===
 
 WalletHandle* LogosExecutionZoneWalletModule::create_new(
@@ -289,10 +273,6 @@ WalletHandle* LogosExecutionZoneWalletModule::open(const QString& config_path, c
     return wallet_ffi_open(config_utf8.constData(), storage_utf8.constData());
 }
 
-void LogosExecutionZoneWalletModule::destroy_wallet(WalletHandle* handle) {
-    wallet_ffi_destroy(handle);
-}
-
 WalletFfiError LogosExecutionZoneWalletModule::save(WalletHandle* handle) {
     return wallet_ffi_save(handle);
 }
@@ -308,10 +288,4 @@ QString LogosExecutionZoneWalletModule::get_sequencer_addr(WalletHandle* handle)
     QString result = QString::fromUtf8(addr);
     wallet_ffi_free_string(addr);
     return result;
-}
-
-// === Memory Management ===
-
-void LogosExecutionZoneWalletModule::free_string(char* ptr) {
-    wallet_ffi_free_string(ptr);
 }

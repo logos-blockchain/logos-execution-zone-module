@@ -25,7 +25,6 @@ public:
     virtual WalletFfiError create_account_public(WalletHandle* handle, FfiBytes32* out_account_id) = 0;
     virtual WalletFfiError create_account_private(WalletHandle* handle, FfiBytes32* out_account_id) = 0;
     virtual WalletFfiError list_accounts(WalletHandle* handle, FfiAccountList* out_list) = 0;
-    virtual void free_account_list(FfiAccountList* list) = 0;
 
     // Account Queries
     virtual WalletFfiError get_balance(
@@ -44,7 +43,6 @@ public:
         const FfiBytes32* account_id,
         FfiAccount* out_account
     ) = 0;
-    virtual void free_account_data(FfiAccount* account) = 0;
     virtual WalletFfiError get_public_account_key(
         WalletHandle* handle,
         const FfiBytes32* account_id,
@@ -55,7 +53,6 @@ public:
         const FfiBytes32* account_id,
         FfiPrivateAccountKeys* out_keys
     ) = 0;
-    virtual void free_private_account_keys(FfiPrivateAccountKeys* keys) = 0;
 
     // Account Encoding
     virtual QString account_id_to_base58(const FfiBytes32* account_id) = 0;
@@ -119,7 +116,6 @@ public:
         const FfiBytes32* account_id,
         FfiTransferResult* out_result
     ) = 0;
-    virtual void free_transfer_result(FfiTransferResult* result) = 0;
 
     // Wallet Lifecycle
     virtual WalletHandle* create_new(
@@ -128,14 +124,10 @@ public:
         const QString& password
     ) = 0;
     virtual WalletHandle* open(const QString& config_path, const QString& storage_path) = 0;
-    virtual void destroy_wallet(WalletHandle* handle) = 0;
     virtual WalletFfiError save(WalletHandle* handle) = 0;
 
     // Configuration & Metadata
     virtual QString get_sequencer_addr(WalletHandle* handle) = 0;
-
-    // Memory Management
-    virtual void free_string(char* ptr) = 0;
 };
 
 #define ILogosExecutionZoneWalletModule_iid "org.logos.ilogosexecutionzonewalletmodule"

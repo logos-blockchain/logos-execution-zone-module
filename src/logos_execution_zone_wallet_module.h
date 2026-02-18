@@ -33,7 +33,6 @@ public:
     Q_INVOKABLE WalletFfiError create_account_public(WalletHandle* handle, FfiBytes32* out_account_id) override;
     Q_INVOKABLE WalletFfiError create_account_private(WalletHandle* handle, FfiBytes32* out_account_id) override;
     Q_INVOKABLE WalletFfiError list_accounts(WalletHandle* handle, FfiAccountList* out_list) override;
-    Q_INVOKABLE void free_account_list(FfiAccountList* list) override;
 
     // Account Queries
     Q_INVOKABLE WalletFfiError get_balance(
@@ -46,7 +45,6 @@ public:
     get_account_public(WalletHandle* handle, const FfiBytes32* account_id, FfiAccount* out_account) override;
     Q_INVOKABLE WalletFfiError
     get_account_private(WalletHandle* handle, const FfiBytes32* account_id, FfiAccount* out_account) override;
-    Q_INVOKABLE void free_account_data(FfiAccount* account) override;
     Q_INVOKABLE WalletFfiError get_public_account_key(
         WalletHandle* handle,
         const FfiBytes32* account_id,
@@ -57,7 +55,6 @@ public:
         const FfiBytes32* account_id,
         FfiPrivateAccountKeys* out_keys
     ) override;
-    Q_INVOKABLE void free_private_account_keys(FfiPrivateAccountKeys* keys) override;
 
     // Account Encoding
     Q_INVOKABLE QString account_id_to_base58(const FfiBytes32* account_id) override;
@@ -115,7 +112,6 @@ public:
     register_public_account(WalletHandle* handle, const FfiBytes32* account_id, FfiTransferResult* out_result) override;
     Q_INVOKABLE WalletFfiError
     register_private_account(WalletHandle* handle, const FfiBytes32* account_id, FfiTransferResult* out_result) override;
-    Q_INVOKABLE void free_transfer_result(FfiTransferResult* result) override;
 
     // Wallet Lifecycle
     Q_INVOKABLE WalletHandle* create_new(
@@ -124,14 +120,10 @@ public:
         const QString& password
     ) override;
     Q_INVOKABLE WalletHandle* open(const QString& config_path, const QString& storage_path) override;
-    Q_INVOKABLE void destroy_wallet(WalletHandle* handle) override;
     Q_INVOKABLE WalletFfiError save(WalletHandle* handle) override;
 
     // Configuration
     Q_INVOKABLE QString get_sequencer_addr(WalletHandle* handle) override;
-
-    // Memory Management
-    Q_INVOKABLE void free_string(char* ptr) override;
 
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);
