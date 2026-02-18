@@ -3,7 +3,13 @@
 #include <QtCore/QDebug>
 
 LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() = default;
-LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() = default;
+
+LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
+    if (walletHandle) {
+        wallet_ffi_destroy(walletHandle);
+        walletHandle = nullptr;
+    }
+}
 
 // === Plugin Interface ===
 
@@ -23,32 +29,28 @@ void LogosExecutionZoneWalletModule::initLogos(LogosAPI* logosApiInstance) {
 
 // === Account Management ===
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_public(WalletHandle* handle, FfiBytes32* out_account_id) {
-    return wallet_ffi_create_account_public(handle, out_account_id);
+WalletFfiError LogosExecutionZoneWalletModule::create_account_public(FfiBytes32* out_account_id) {
+    return wallet_ffi_create_account_public(walletHandle, out_account_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_private(
-    WalletHandle* handle,
-    FfiBytes32* out_account_id
-) {
-    return wallet_ffi_create_account_private(handle, out_account_id);
+WalletFfiError LogosExecutionZoneWalletModule::create_account_private(FfiBytes32* out_account_id) {
+    return wallet_ffi_create_account_private(walletHandle, out_account_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::list_accounts(WalletHandle* handle, FfiAccountList* out_list) {
-    return wallet_ffi_list_accounts(handle, out_list);
+WalletFfiError LogosExecutionZoneWalletModule::list_accounts(FfiAccountList* out_list) {
+    return wallet_ffi_list_accounts(walletHandle, out_list);
 }
 
 // === Account Queries ===
 
 WalletFfiError LogosExecutionZoneWalletModule::get_balance(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     const bool is_public,
     QByteArray* out_balance_le16
 ) {
     uint8_t balance[16] = {0};
 
-    const WalletFfiError err = wallet_ffi_get_balance(handle, account_id, is_public, &balance);
+    const WalletFfiError err = wallet_ffi_get_balance(walletHandle, account_id, is_public, &balance);
     if (err == SUCCESS && out_balance_le16) {
         *out_balance_le16 = QByteArray(reinterpret_cast<const char*>(balance), 16);
     }
@@ -57,35 +59,31 @@ WalletFfiError LogosExecutionZoneWalletModule::get_balance(
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_account_public(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiAccount* out_account
 ) {
-    return wallet_ffi_get_account_public(handle, account_id, out_account);
+    return wallet_ffi_get_account_public(walletHandle, account_id, out_account);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiAccount* out_account
 ) {
-    return wallet_ffi_get_account_private(handle, account_id, out_account);
+    return wallet_ffi_get_account_private(walletHandle, account_id, out_account);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_public_account_key(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiPublicAccountKey* out_public_key
 ) {
-    return wallet_ffi_get_public_account_key(handle, account_id, out_public_key);
+    return wallet_ffi_get_public_account_key(walletHandle, account_id, out_public_key);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_private_account_keys(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiPrivateAccountKeys* out_keys
 ) {
-    return wallet_ffi_get_private_account_keys(handle, account_id, out_keys);
+    return wallet_ffi_get_private_account_keys(walletHandle, account_id, out_keys);
 }
 
 // === Account Encoding ===
@@ -111,25 +109,21 @@ WalletFfiError LogosExecutionZoneWalletModule::account_id_from_base58(
 
 // === Blockchain Synchronisation ===
 
-WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(WalletHandle* handle, const uint64_t block_id) {
-    return wallet_ffi_sync_to_block(handle, block_id);
+WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(const uint64_t block_id) {
+    return wallet_ffi_sync_to_block(walletHandle, block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(WalletHandle* handle, uint64_t* out_block_id) {
-    return wallet_ffi_get_last_synced_block(handle, out_block_id);
+WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(uint64_t* out_block_id) {
+    return wallet_ffi_get_last_synced_block(walletHandle, out_block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_current_block_height(
-    WalletHandle* handle,
-    uint64_t* out_block_height
-) {
-    return wallet_ffi_get_current_block_height(handle, out_block_height);
+WalletFfiError LogosExecutionZoneWalletModule::get_current_block_height(uint64_t* out_block_height) {
+    return wallet_ffi_get_current_block_height(walletHandle, out_block_height);
 }
 
 // === Operations ===
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
-    WalletHandle* handle,
     const FfiBytes32* from,
     const FfiBytes32* to,
     const QByteArray& amount_le16,
@@ -143,11 +137,10 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
     uint8_t amount[16];
     memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_public(handle, from, to, &amount, out_result);
+    return wallet_ffi_transfer_public(walletHandle, from, to, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
-    WalletHandle* handle,
     const FfiBytes32* from,
     const FfiPrivateAccountKeys* to_keys,
     const QByteArray& amount_le16,
@@ -161,11 +154,10 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
     uint8_t amount[16];
     memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_shielded(handle, from, to_keys, &amount, out_result);
+    return wallet_ffi_transfer_shielded(walletHandle, from, to_keys, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_deshielded(
-    WalletHandle* handle,
     const FfiBytes32* from,
     const FfiBytes32* to,
     const QByteArray& amount_le16,
@@ -179,11 +171,10 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_deshielded(
     uint8_t amount[16];
     memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_deshielded(handle, from, to, &amount, out_result);
+    return wallet_ffi_transfer_deshielded(walletHandle, from, to, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
-    WalletHandle* handle,
     const FfiBytes32* from,
     const FfiPrivateAccountKeys* to_keys,
     const QByteArray& amount_le16,
@@ -197,11 +188,10 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
     uint8_t amount[16];
     memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_private(handle, from, to_keys, &amount, out_result);
+    return wallet_ffi_transfer_private(walletHandle, from, to_keys, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded_owned(
-    WalletHandle* handle,
     const FfiBytes32* from,
     const FfiBytes32* to,
     const QByteArray& amount_le16,
@@ -215,11 +205,10 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded_owned(
     uint8_t amount[16];
     memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_shielded_owned(handle, from, to, &amount, out_result);
+    return wallet_ffi_transfer_shielded_owned(walletHandle, from, to, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
-    WalletHandle* handle,
     const FfiBytes32* from,
     const FfiBytes32* to,
     const QByteArray& amount_le16,
@@ -233,54 +222,74 @@ WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
     uint8_t amount[16];
     memcpy(amount, amount_le16.constData(), 16);
 
-    return wallet_ffi_transfer_private_owned(handle, from, to, &amount, out_result);
+    return wallet_ffi_transfer_private_owned(walletHandle, from, to, &amount, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiTransferResult* out_result
 ) {
-    return wallet_ffi_register_public_account(handle, account_id, out_result);
+    return wallet_ffi_register_public_account(walletHandle, account_id, out_result);
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::register_private_account(
-    WalletHandle* handle,
     const FfiBytes32* account_id,
     FfiTransferResult* out_result
 ) {
-    return wallet_ffi_register_private_account(handle, account_id, out_result);
+    return wallet_ffi_register_private_account(walletHandle, account_id, out_result);
 }
 
 // === Wallet Lifecycle ===
 
-WalletHandle* LogosExecutionZoneWalletModule::create_new(
+WalletFfiError LogosExecutionZoneWalletModule::create_new(
     const QString& config_path,
     const QString& storage_path,
     const QString& password
 ) {
+    if (walletHandle) {
+        qWarning() << "create_new: wallet is already open";
+        return INTERNAL_ERROR;
+    }
+
     const QByteArray config_utf8 = config_path.toUtf8();
     const QByteArray storage_utf8 = storage_path.toUtf8();
     const QByteArray password_utf8 = password.toUtf8();
 
-    return wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
+    walletHandle = wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
+    if (!walletHandle) {
+        qWarning() << "create_new: wallet_ffi_create_new returned null";
+        return INTERNAL_ERROR;
+    }
+
+    return SUCCESS;
 }
 
-WalletHandle* LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
+WalletFfiError LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
+    if (walletHandle) {
+        qWarning() << "open: wallet is already open";
+        return INTERNAL_ERROR;
+    }
+
     const QByteArray config_utf8 = config_path.toUtf8();
     const QByteArray storage_utf8 = storage_path.toUtf8();
 
-    return wallet_ffi_open(config_utf8.constData(), storage_utf8.constData());
+    walletHandle = wallet_ffi_open(config_utf8.constData(), storage_utf8.constData());
+    if (!walletHandle) {
+        qWarning() << "open: wallet_ffi_open returned null";
+        return INTERNAL_ERROR;
+    }
+
+    return SUCCESS;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::save(WalletHandle* handle) {
-    return wallet_ffi_save(handle);
+WalletFfiError LogosExecutionZoneWalletModule::save() {
+    return wallet_ffi_save(walletHandle);
 }
 
 // === Configuration ===
 
-QString LogosExecutionZoneWalletModule::get_sequencer_addr(WalletHandle* handle) {
-    char* addr = wallet_ffi_get_sequencer_addr(handle);
+QString LogosExecutionZoneWalletModule::get_sequencer_addr() {
+    char* addr = wallet_ffi_get_sequencer_addr(walletHandle);
     if (!addr) {
         return {};
     }
