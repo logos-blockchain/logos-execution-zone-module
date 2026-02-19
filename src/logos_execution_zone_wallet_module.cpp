@@ -1,9 +1,138 @@
 #include "logos_execution_zone_wallet_module.h"
 
 #include <QtCore/QDebug>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QVariantMap>
+
+static QString bytesToHex(const uint8_t* data, const size_t length) {
+    const QByteArray bytearray(reinterpret_cast<const char*>(data), static_cast<int>(length));
+    return QString::fromLatin1(bytearray.toHex());
+}
+
+namespace JsonKeys {
+static constexpr auto TxHash = "tx_hash";
+static constexpr auto Success = "success";
+static constexpr auto ProgramOwner = "program_owner";
+static constexpr auto Balance = "balance";
+static constexpr auto Nonce = "nonce";
+static constexpr auto Data = "data";
+static constexpr auto NullifierPublicKey = "nullifier_public_key";
+static constexpr auto ViewingPublicKey = "viewing_public_key";
+static constexpr auto AccountId = "account_id";
+static constexpr auto IsPublic = "is_public";
+} // namespace JsonKeys
+
+static bool hexToBytes(const QString& hex, QByteArray& output_bytes, int expectedLength = -1) {
+    QString trimmed_hex = hex.trimmed();
+    if (trimmed_hex.startsWith("0x", Qt::CaseInsensitive))
+        trimmed_hex = trimmed_hex.mid(2);
+    if (trimmed_hex.size() % 2 != 0)
+        return false;
+    const QByteArray decoded = QByteArray::fromHex(trimmed_hex.toLatin1());
+    if (expectedLength != -1 && decoded.size() != expectedLength)
+        return false;
+    output_bytes = decoded;
+    return true;
+}
+
+static bool hexToU128(const QString& hex, uint8_t (*output)[16]) {
+    QByteArray buffer;
+    if (!hexToBytes(hex, buffer, 16))
+        return false;
+    memcpy(output, buffer.constData(), 16);
+    return true;
+}
+
+static QString bytes32ToHex(const FfiBytes32& bytes) {
+    return bytesToHex(bytes.data, 32);
+}
+
+static bool hexToBytes32(const QString& hex, FfiBytes32* output_bytes) {
+    if (output_bytes == nullptr)
+        return false;
+    QByteArray buffer;
+    if (!hexToBytes(hex, buffer, 32))
+        return false;
+    memcpy(output_bytes->data, buffer.constData(), 32);
+    return true;
+}
+
+static QString ffiTransferResultToJson(const FfiTransferResult& result) {
+    QVariantMap map;
+    map[JsonKeys::TxHash] = result.tx_hash ? QString::fromUtf8(result.tx_hash) : QString();
+    map[JsonKeys::Success] = result.success;
+    return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
+}
+
+static QString ffiAccountToJson(const FfiAccount& account) {
+    QVariantMap map;
+    map[JsonKeys::ProgramOwner] = bytesToHex(reinterpret_cast<const uint8_t*>(account.program_owner.data), 32);
+    map[JsonKeys::Balance] = bytesToHex(account.balance.data, 16);
+    map[JsonKeys::Nonce] = bytesToHex(account.nonce.data, 16);
+    if (account.data && account.data_len > 0) {
+        map[JsonKeys::Data] = bytesToHex(account.data, account.data_len);
+    } else {
+        map[JsonKeys::Data] = QString();
+    }
+    return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
+}
+
+static QJsonObject ffiAccountListEntryToJson(const FfiAccountListEntry& entry) {
+    QVariantMap map;
+    map[JsonKeys::AccountId] = bytes32ToHex(entry.account_id);
+    map[JsonKeys::IsPublic] = entry.is_public;
+    return QJsonObject::fromVariantMap(map);
+}
+
+static QString ffiPrivateAccountKeysToJson(const FfiPrivateAccountKeys& keys) {
+    QVariantMap map;
+    map[JsonKeys::NullifierPublicKey] = bytes32ToHex(keys.nullifier_public_key);
+    if (keys.viewing_public_key && keys.viewing_public_key_len > 0) {
+        map[JsonKeys::ViewingPublicKey] = bytesToHex(keys.viewing_public_key, keys.viewing_public_key_len);
+    } else {
+        map[JsonKeys::ViewingPublicKey] = QString();
+    }
+    return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
+}
+
+static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKeys* output_keys) {
+    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    if (!doc.isObject())
+        return false;
+    const QVariantMap map = doc.object().toVariantMap();
+
+    if (map.contains(JsonKeys::NullifierPublicKey)) {
+        if (!hexToBytes32(map[JsonKeys::NullifierPublicKey].toString(), &output_keys->nullifier_public_key))
+            return false;
+    }
+
+    if (map.contains(JsonKeys::ViewingPublicKey)) {
+        QByteArray buffer;
+        if (!hexToBytes(map[JsonKeys::ViewingPublicKey].toString(), buffer))
+            return false;
+
+        uint8_t* data = static_cast<uint8_t*>(malloc(buffer.size()));
+        memcpy(data, buffer.constData(), buffer.size());
+        output_keys->viewing_public_key = data;
+        output_keys->viewing_public_key_len = buffer.size();
+    } else {
+        output_keys->viewing_public_key = nullptr;
+        output_keys->viewing_public_key_len = 0;
+    }
+
+    return true;
+}
 
 LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() = default;
-LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() = default;
+
+LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
+    if (walletHandle) {
+        wallet_ffi_destroy(walletHandle);
+        walletHandle = nullptr;
+    }
+}
 
 // === Plugin Interface ===
 
@@ -23,87 +152,132 @@ void LogosExecutionZoneWalletModule::initLogos(LogosAPI* logosApiInstance) {
 
 // === Account Management ===
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_public(WalletHandle* handle, FfiBytes32* out_account_id) {
-    return wallet_ffi_create_account_public(handle, out_account_id);
+WalletFfiError LogosExecutionZoneWalletModule::create_account_public(QString& output_account_id_hex) {
+    FfiBytes32 id{};
+    const WalletFfiError error = wallet_ffi_create_account_public(walletHandle, &id);
+    if (error == SUCCESS) {
+        output_account_id_hex = bytes32ToHex(id);
+    }
+    return error;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::create_account_private(
-    WalletHandle* handle,
-    FfiBytes32* out_account_id
-) {
-    return wallet_ffi_create_account_private(handle, out_account_id);
+WalletFfiError LogosExecutionZoneWalletModule::create_account_private(QString& output_account_id_hex) {
+    FfiBytes32 id{};
+    const WalletFfiError error = wallet_ffi_create_account_private(walletHandle, &id);
+    if (error == SUCCESS) {
+        output_account_id_hex = bytes32ToHex(id);
+    }
+    return error;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::list_accounts(WalletHandle* handle, FfiAccountList* out_list) {
-    return wallet_ffi_list_accounts(handle, out_list);
-}
-
-void LogosExecutionZoneWalletModule::free_account_list(FfiAccountList* list) {
-    wallet_ffi_free_account_list(list);
+WalletFfiError LogosExecutionZoneWalletModule::list_accounts(QJsonArray& output_list) {
+    FfiAccountList list{};
+    const WalletFfiError error = wallet_ffi_list_accounts(walletHandle, &list);
+    if (error == SUCCESS) {
+        for (uintptr_t i = 0; i < list.count; ++i) {
+            output_list.append(ffiAccountListEntryToJson(list.entries[i]));
+        }
+        wallet_ffi_free_account_list(&list);
+    }
+    return error;
 }
 
 // === Account Queries ===
 
 WalletFfiError LogosExecutionZoneWalletModule::get_balance(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
+    const QString& account_id_hex,
     const bool is_public,
-    QByteArray* out_balance_le16
+    QString& output_balance_le16_hex
 ) {
-    uint8_t balance[16] = {0};
-
-    const WalletFfiError err = wallet_ffi_get_balance(handle, account_id, is_public, &balance);
-    if (err == SUCCESS && out_balance_le16) {
-        *out_balance_le16 = QByteArray(reinterpret_cast<const char*>(balance), 16);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
     }
 
-    return err;
+    uint8_t balance[16] = {0};
+    const WalletFfiError error = wallet_ffi_get_balance(walletHandle, &id, is_public, &balance);
+    if (error == SUCCESS) {
+        output_balance_le16_hex = bytesToHex(balance, 16);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_account_public(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
-    FfiAccount* out_account
+    const QString& account_id_hex,
+    QString& output_account_json
 ) {
-    return wallet_ffi_get_account_public(handle, account_id, out_account);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
+    }
+    FfiAccount account{};
+    const WalletFfiError error = wallet_ffi_get_account_public(walletHandle, &id, &account);
+    if (error == SUCCESS) {
+        output_account_json = ffiAccountToJson(account);
+        wallet_ffi_free_account_data(&account);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_account_private(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
-    FfiAccount* out_account
+    const QString& account_id_hex,
+    QString& output_account_json
 ) {
-    return wallet_ffi_get_account_private(handle, account_id, out_account);
-}
-
-void LogosExecutionZoneWalletModule::free_account_data(FfiAccount* account) {
-    wallet_ffi_free_account_data(account);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
+    }
+    FfiAccount account{};
+    const WalletFfiError error = wallet_ffi_get_account_private(walletHandle, &id, &account);
+    if (error == SUCCESS) {
+        output_account_json = ffiAccountToJson(account);
+        wallet_ffi_free_account_data(&account);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_public_account_key(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
-    FfiPublicAccountKey* out_public_key
+    const QString& account_id_hex,
+    QString& output_public_key_hex
 ) {
-    return wallet_ffi_get_public_account_key(handle, account_id, out_public_key);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
+    }
+    FfiPublicAccountKey key{};
+    const WalletFfiError error = wallet_ffi_get_public_account_key(walletHandle, &id, &key);
+    if (error == SUCCESS) {
+        output_public_key_hex = bytes32ToHex(key.public_key);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::get_private_account_keys(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
-    FfiPrivateAccountKeys* out_keys
+    const QString& account_id_hex,
+    QString& output_keys_json
 ) {
-    return wallet_ffi_get_private_account_keys(handle, account_id, out_keys);
-}
-
-void LogosExecutionZoneWalletModule::free_private_account_keys(FfiPrivateAccountKeys* keys) {
-    wallet_ffi_free_private_account_keys(keys);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
+    }
+    FfiPrivateAccountKeys keys{};
+    const WalletFfiError error = wallet_ffi_get_private_account_keys(walletHandle, &id, &keys);
+    if (error == SUCCESS) {
+        output_keys_json = ffiPrivateAccountKeysToJson(keys);
+        wallet_ffi_free_private_account_keys(&keys);
+    }
+    return error;
 }
 
 // === Account Encoding ===
 
-QString LogosExecutionZoneWalletModule::account_id_to_base58(const FfiBytes32* account_id) {
-    char* str = wallet_ffi_account_id_to_base58(account_id);
+QString LogosExecutionZoneWalletModule::account_id_to_base58(const QString& account_id_hex) {
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return {};
+    }
+
+    char* str = wallet_ffi_account_id_to_base58(&id);
     if (!str) {
         return {};
     }
@@ -115,192 +289,290 @@ QString LogosExecutionZoneWalletModule::account_id_to_base58(const FfiBytes32* a
 
 WalletFfiError LogosExecutionZoneWalletModule::account_id_from_base58(
     const QString& base58_str,
-    FfiBytes32* out_account_id
+    QString& output_account_id_hex
 ) {
+    FfiBytes32 id{};
     const QByteArray utf8 = base58_str.toUtf8();
-    return wallet_ffi_account_id_from_base58(utf8.constData(), out_account_id);
+    const WalletFfiError error = wallet_ffi_account_id_from_base58(utf8.constData(), &id);
+    if (error == SUCCESS) {
+        output_account_id_hex = bytes32ToHex(id);
+    }
+    return error;
 }
 
 // === Blockchain Synchronisation ===
 
-WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(WalletHandle* handle, const uint64_t block_id) {
-    return wallet_ffi_sync_to_block(handle, block_id);
+WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(const uint64_t block_id) {
+    return wallet_ffi_sync_to_block(walletHandle, block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(WalletHandle* handle, uint64_t* out_block_id) {
-    return wallet_ffi_get_last_synced_block(handle, out_block_id);
+WalletFfiError LogosExecutionZoneWalletModule::get_last_synced_block(uint64_t* output_block_id) {
+    return wallet_ffi_get_last_synced_block(walletHandle, output_block_id);
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::get_current_block_height(
-    WalletHandle* handle,
-    uint64_t* out_block_height
-) {
-    return wallet_ffi_get_current_block_height(handle, out_block_height);
+WalletFfiError LogosExecutionZoneWalletModule::get_current_block_height(uint64_t* output_block_height) {
+    return wallet_ffi_get_current_block_height(walletHandle, output_block_height);
 }
 
 // === Operations ===
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_public(
-    WalletHandle* handle,
-    const FfiBytes32* from,
-    const FfiBytes32* to,
-    const QByteArray& amount_le16,
-    FfiTransferResult* out_result
+    const QString& from_hex,
+    const QString& to_hex,
+    const QString& amount_le16_hex,
+    QString& output_result_json
 ) {
-    if (amount_le16.size() != 16) {
-        qWarning() << "transfer_public: amount_le16 must be 16 bytes";
-        return SERIALIZATION_ERROR;
+    FfiBytes32 fromId{}, toId{};
+    if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
+        return INVALID_ACCOUNT_ID;
     }
 
     uint8_t amount[16];
-    memcpy(amount, amount_le16.constData(), 16);
+    if (!hexToU128(amount_le16_hex, &amount)) {
+        qWarning() << "transfer_public: amount_le16_hex must be 32 hex characters (16 bytes)";
+        return SERIALIZATION_ERROR;
+    }
 
-    return wallet_ffi_transfer_public(handle, from, to, &amount, out_result);
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_transfer_public(walletHandle, &fromId, &toId, &amount, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded(
-    WalletHandle* handle,
-    const FfiBytes32* from,
-    const FfiPrivateAccountKeys* to_keys,
-    const QByteArray& amount_le16,
-    FfiTransferResult* out_result
+    const QString& from_hex,
+    const QString& to_keys_json,
+    const QString& amount_le16_hex,
+    QString& output_result_json
 ) {
-    if (amount_le16.size() != 16) {
-        qWarning() << "transfer_shielded: amount_le16 must be 16 bytes";
+    FfiBytes32 fromId{};
+    if (!hexToBytes32(from_hex, &fromId)) {
+        return INVALID_ACCOUNT_ID;
+    }
+
+    FfiPrivateAccountKeys toKeys{};
+    if (!jsonToFfiPrivateAccountKeys(to_keys_json, &toKeys)) {
         return SERIALIZATION_ERROR;
     }
 
     uint8_t amount[16];
-    memcpy(amount, amount_le16.constData(), 16);
+    if (!hexToU128(amount_le16_hex, &amount)) {
+        qWarning() << "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)";
+        free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+        return SERIALIZATION_ERROR;
+    }
 
-    return wallet_ffi_transfer_shielded(handle, from, to_keys, &amount, out_result);
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &amount, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+
+    free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_deshielded(
-    WalletHandle* handle,
-    const FfiBytes32* from,
-    const FfiBytes32* to,
-    const QByteArray& amount_le16,
-    FfiTransferResult* out_result
+    const QString& from_hex,
+    const QString& to_hex,
+    const QString& amount_le16_hex,
+    QString& output_result_json
 ) {
-    if (amount_le16.size() != 16) {
-        qWarning() << "transfer_deshielded: amount_le16 must be 16 bytes";
-        return SERIALIZATION_ERROR;
+    FfiBytes32 fromId{}, toId{};
+    if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
+        return INVALID_ACCOUNT_ID;
     }
 
     uint8_t amount[16];
-    memcpy(amount, amount_le16.constData(), 16);
+    if (!hexToU128(amount_le16_hex, &amount)) {
+        qWarning() << "transfer_deshielded: amount_le16_hex must be 32 hex characters (16 bytes)";
+        return SERIALIZATION_ERROR;
+    }
 
-    return wallet_ffi_transfer_deshielded(handle, from, to, &amount, out_result);
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_transfer_deshielded(walletHandle, &fromId, &toId, &amount, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_private(
-    WalletHandle* handle,
-    const FfiBytes32* from,
-    const FfiPrivateAccountKeys* to_keys,
-    const QByteArray& amount_le16,
-    FfiTransferResult* out_result
+    const QString& from_hex,
+    const QString& to_keys_json,
+    const QString& amount_le16_hex,
+    QString& output_result_json
 ) {
-    if (amount_le16.size() != 16) {
-        qWarning() << "transfer_private: amount_le16 must be 16 bytes";
+    FfiBytes32 fromId{};
+    if (!hexToBytes32(from_hex, &fromId)) {
+        return INVALID_ACCOUNT_ID;
+    }
+
+    FfiPrivateAccountKeys toKeys{};
+    if (!jsonToFfiPrivateAccountKeys(to_keys_json, &toKeys)) {
         return SERIALIZATION_ERROR;
     }
 
     uint8_t amount[16];
-    memcpy(amount, amount_le16.constData(), 16);
+    if (!hexToU128(amount_le16_hex, &amount)) {
+        qWarning() << "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)";
+        free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+        return SERIALIZATION_ERROR;
+    }
 
-    return wallet_ffi_transfer_private(handle, from, to_keys, &amount, out_result);
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &amount, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+
+    free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_shielded_owned(
-    WalletHandle* handle,
-    const FfiBytes32* from,
-    const FfiBytes32* to,
-    const QByteArray& amount_le16,
-    FfiTransferResult* out_result
+    const QString& from_hex,
+    const QString& to_hex,
+    const QString& amount_le16_hex,
+    QString& output_result_json
 ) {
-    if (amount_le16.size() != 16) {
-        qWarning() << "transfer_shielded_owned: amount_le16 must be 16 bytes";
-        return SERIALIZATION_ERROR;
+    FfiBytes32 fromId{}, toId{};
+    if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
+        return INVALID_ACCOUNT_ID;
     }
 
     uint8_t amount[16];
-    memcpy(amount, amount_le16.constData(), 16);
+    if (!hexToU128(amount_le16_hex, &amount)) {
+        qWarning() << "transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)";
+        return SERIALIZATION_ERROR;
+    }
 
-    return wallet_ffi_transfer_shielded_owned(handle, from, to, &amount, out_result);
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::transfer_private_owned(
-    WalletHandle* handle,
-    const FfiBytes32* from,
-    const FfiBytes32* to,
-    const QByteArray& amount_le16,
-    FfiTransferResult* out_result
+    const QString& from_hex,
+    const QString& to_hex,
+    const QString& amount_le16_hex,
+    QString& output_result_json
 ) {
-    if (amount_le16.size() != 16) {
-        qWarning() << "transfer_private_owned: amount_le16 must be 16 bytes";
-        return SERIALIZATION_ERROR;
+    FfiBytes32 fromId{}, toId{};
+    if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
+        return INVALID_ACCOUNT_ID;
     }
 
     uint8_t amount[16];
-    memcpy(amount, amount_le16.constData(), 16);
+    if (!hexToU128(amount_le16_hex, &amount)) {
+        qWarning() << "transfer_private_owned: amount_le16_hex must be 32 hex characters (16 bytes)";
+        return SERIALIZATION_ERROR;
+    }
 
-    return wallet_ffi_transfer_private_owned(handle, from, to, &amount, out_result);
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_transfer_private_owned(walletHandle, &fromId, &toId, &amount, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::register_public_account(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
-    FfiTransferResult* out_result
+    const QString& account_id_hex,
+    QString& output_result_json
 ) {
-    return wallet_ffi_register_public_account(handle, account_id, out_result);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
+    }
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_register_public_account(walletHandle, &id, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+    return error;
 }
 
 WalletFfiError LogosExecutionZoneWalletModule::register_private_account(
-    WalletHandle* handle,
-    const FfiBytes32* account_id,
-    FfiTransferResult* out_result
+    const QString& account_id_hex,
+    QString& output_result_json
 ) {
-    return wallet_ffi_register_private_account(handle, account_id, out_result);
-}
-
-void LogosExecutionZoneWalletModule::free_transfer_result(FfiTransferResult* result) {
-    wallet_ffi_free_transfer_result(result);
+    FfiBytes32 id{};
+    if (!hexToBytes32(account_id_hex, &id)) {
+        return INVALID_ACCOUNT_ID;
+    }
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_register_private_account(walletHandle, &id, &result);
+    if (error == SUCCESS) {
+        output_result_json = ffiTransferResultToJson(result);
+        wallet_ffi_free_transfer_result(&result);
+    }
+    return error;
 }
 
 // === Wallet Lifecycle ===
 
-WalletHandle* LogosExecutionZoneWalletModule::create_new(
+WalletFfiError LogosExecutionZoneWalletModule::create_new(
     const QString& config_path,
     const QString& storage_path,
     const QString& password
 ) {
+    if (walletHandle) {
+        qWarning() << "create_new: wallet is already open";
+        return INTERNAL_ERROR;
+    }
+
     const QByteArray config_utf8 = config_path.toUtf8();
     const QByteArray storage_utf8 = storage_path.toUtf8();
     const QByteArray password_utf8 = password.toUtf8();
 
-    return wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
+    walletHandle = wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
+    if (!walletHandle) {
+        qWarning() << "create_new: wallet_ffi_create_new returned null";
+        return INTERNAL_ERROR;
+    }
+
+    return SUCCESS;
 }
 
-WalletHandle* LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
+WalletFfiError LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
+    if (walletHandle) {
+        qWarning() << "open: wallet is already open";
+        return INTERNAL_ERROR;
+    }
+
     const QByteArray config_utf8 = config_path.toUtf8();
     const QByteArray storage_utf8 = storage_path.toUtf8();
 
-    return wallet_ffi_open(config_utf8.constData(), storage_utf8.constData());
+    walletHandle = wallet_ffi_open(config_utf8.constData(), storage_utf8.constData());
+    if (!walletHandle) {
+        qWarning() << "open: wallet_ffi_open returned null";
+        return INTERNAL_ERROR;
+    }
+
+    return SUCCESS;
 }
 
-void LogosExecutionZoneWalletModule::destroy_wallet(WalletHandle* handle) {
-    wallet_ffi_destroy(handle);
-}
-
-WalletFfiError LogosExecutionZoneWalletModule::save(WalletHandle* handle) {
-    return wallet_ffi_save(handle);
+WalletFfiError LogosExecutionZoneWalletModule::save() {
+    return wallet_ffi_save(walletHandle);
 }
 
 // === Configuration ===
 
-QString LogosExecutionZoneWalletModule::get_sequencer_addr(WalletHandle* handle) {
-    char* addr = wallet_ffi_get_sequencer_addr(handle);
+QString LogosExecutionZoneWalletModule::get_sequencer_addr() {
+    char* addr = wallet_ffi_get_sequencer_addr(walletHandle);
     if (!addr) {
         return {};
     }
@@ -308,10 +580,4 @@ QString LogosExecutionZoneWalletModule::get_sequencer_addr(WalletHandle* handle)
     QString result = QString::fromUtf8(addr);
     wallet_ffi_free_string(addr);
     return result;
-}
-
-// === Memory Management ===
-
-void LogosExecutionZoneWalletModule::free_string(char* ptr) {
-    wallet_ffi_free_string(ptr);
 }
