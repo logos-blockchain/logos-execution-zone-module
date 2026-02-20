@@ -7,7 +7,7 @@ configure:
       ${LOGOS_EXECUTION_ZONE_WALLET_INCLUDE:+-DLOGOS_EXECUTION_ZONE_WALLET_INCLUDE="$LOGOS_EXECUTION_ZONE_WALLET_INCLUDE"}
 
 build: configure
-    cmake --build build --parallel --target liblogos-execution-zone-wallet-module
+    cmake --build build --parallel --target logos_execution_zone_wallet_module
 
 clean:
     rm -rf build result
