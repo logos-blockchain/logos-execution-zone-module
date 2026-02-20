@@ -3,14 +3,6 @@
 
 #include <core/interface.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include <wallet_ffi.h>
-#ifdef __cplusplus
-}
-#endif
-
 class ILogosExecutionZoneWalletModule {
 public:
     virtual ~ILogosExecutionZoneWalletModule() = default;
@@ -38,7 +30,7 @@ public:
     virtual QString account_id_from_base58(const QString& base58_str) = 0;
 
     // Blockchain Synchronisation
-    virtual WalletFfiError sync_to_block(uint64_t block_id) = 0;
+    virtual int sync_to_block(uint64_t block_id) = 0;
     virtual uint64_t get_last_synced_block() = 0;
     virtual uint64_t get_current_block_height() = 0;
 
@@ -77,13 +69,13 @@ public:
     virtual QString register_private_account(const QString& account_id_hex) = 0;
 
     // Wallet Lifecycle
-    virtual WalletFfiError create_new(
+    virtual int create_new(
         const QString& config_path,
         const QString& storage_path,
         const QString& password
     ) = 0;
-    virtual WalletFfiError open(const QString& config_path, const QString& storage_path) = 0;
-    virtual WalletFfiError save() = 0;
+    virtual int open(const QString& config_path, const QString& storage_path) = 0;
+    virtual int save() = 0;
 
     // Configuration & Metadata
     virtual QString get_sequencer_addr() = 0;
