@@ -125,6 +125,31 @@ static bool jsonToFfiPrivateAccountKeys(const QString& json, FfiPrivateAccountKe
     return true;
 }
 
+// Parses a JSON array of 32-byte hex strings into a contiguous byte buffer of siblings.
+// Returns true on success, with out_len set to the number of siblings and out_bytes sized to out_len*32.
+static bool jsonArrayHexToSiblings32(const QString& json_array_str, QByteArray& out_bytes, uintptr_t& out_len) {
+    QJsonDocument doc = QJsonDocument::fromJson(json_array_str.toUtf8());
+    if (!doc.isArray()) {
+        return false;
+    }
+    const QJsonArray arr = doc.array();
+    out_len = static_cast<uintptr_t>(arr.size());
+    out_bytes.clear();
+    out_bytes.reserve(static_cast<int>(out_len * 32));
+
+    for (const QJsonValue& v : arr) {
+        if (!v.isString()) {
+            return false;
+        }
+        QByteArray bytes;
+        if (!hexToBytes(v.toString(), bytes, 32)) {
+            return false;
+        }
+        out_bytes.append(bytes);
+    }
+    return true;
+}
+
 LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() = default;
 
 LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
@@ -324,6 +349,116 @@ uint64_t LogosExecutionZoneWalletModule::get_current_block_height() {
         return 0;
     }
     return block_height;
+}
+
+// === Pinata claiming ===
+
+QString LogosExecutionZoneWalletModule::claim_pinata(
+    const QString& pinata_account_id_hex,
+    const QString& winner_account_id_hex,
+    const QString& solution_le16_hex
+) {
+    FfiBytes32 pinataId{}, winnerId{};
+    if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
+        qWarning() << "claim_pinata: invalid account id hex";
+        return {};
+    }
+    uint8_t solution[16];
+    if (!hexToU128(solution_le16_hex, &solution)) {
+        qWarning() << "claim_pinata: solution_le16_hex must be 32 hex characters (16 bytes)";
+        return {};
+    }
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_claim_pinata(walletHandle, &pinataId, &winnerId, &solution, &result);
+    if (error != SUCCESS) {
+        qWarning() << "claim_pinata: wallet FFI error" << error;
+        return {};
+    }
+    QString resultJson = ffiTransferResultToJson(result);
+    wallet_ffi_free_transfer_result(&result);
+    return resultJson;
+}
+
+QString LogosExecutionZoneWalletModule::claim_pinata_private_owned_already_initialized(
+    const QString& pinata_account_id_hex,
+    const QString& winner_account_id_hex,
+    const QString& solution_le16_hex,
+    uint64_t winner_proof_index,
+    const QString& winner_proof_siblings_json
+) {
+    FfiBytes32 pinataId{}, winnerId{};
+    if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
+        qWarning() << "claim_pinata_private_owned_already_initialized: invalid account id hex";
+        return {};
+    }
+    uint8_t solution[16];
+    if (!hexToU128(solution_le16_hex, &solution)) {
+        qWarning() << "claim_pinata_private_owned_already_initialized: solution_le16_hex must be 32 hex characters (16 bytes)";
+        return {};
+    }
+
+    QByteArray siblings_bytes;
+    uintptr_t siblings_len = 0;
+    if (!jsonArrayHexToSiblings32(winner_proof_siblings_json, siblings_bytes, siblings_len)) {
+        qWarning() << "claim_pinata_private_owned_already_initialized: failed to parse winner_proof_siblings_json";
+        return {};
+    }
+
+    const uint8_t (*siblings_ptr)[32] = nullptr;
+    if (siblings_len > 0) {
+        siblings_ptr = reinterpret_cast<const uint8_t (*)[32]>(siblings_bytes.constData());
+    }
+
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_claim_pinata_private_owned_already_initialized(
+        walletHandle,
+        &pinataId,
+        &winnerId,
+        &solution,
+        static_cast<uintptr_t>(winner_proof_index),
+        siblings_ptr,
+        siblings_len,
+        &result
+    );
+    if (error != SUCCESS) {
+        qWarning() << "claim_pinata_private_owned_already_initialized: wallet FFI error" << error;
+        return {};
+    }
+    QString resultJson = ffiTransferResultToJson(result);
+    wallet_ffi_free_transfer_result(&result);
+    return resultJson;
+}
+
+QString LogosExecutionZoneWalletModule::claim_pinata_private_owned_not_initialized(
+    const QString& pinata_account_id_hex,
+    const QString& winner_account_id_hex,
+    const QString& solution_le16_hex
+) {
+    FfiBytes32 pinataId{}, winnerId{};
+    if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
+        qWarning() << "claim_pinata_private_owned_not_initialized: invalid account id hex";
+        return {};
+    }
+    uint8_t solution[16];
+    if (!hexToU128(solution_le16_hex, &solution)) {
+        qWarning() << "claim_pinata_private_owned_not_initialized: solution_le16_hex must be 32 hex characters (16 bytes)";
+        return {};
+    }
+    FfiTransferResult result{};
+    const WalletFfiError error = wallet_ffi_claim_pinata_private_owned_not_initialized(
+        walletHandle,
+        &pinataId,
+        &winnerId,
+        &solution,
+        &result
+    );
+    if (error != SUCCESS) {
+        qWarning() << "claim_pinata_private_owned_not_initialized: wallet FFI error" << error;
+        return {};
+    }
+    QString resultJson = ffiTransferResultToJson(result);
+    wallet_ffi_free_transfer_result(&result);
+    return resultJson;
 }
 
 // === Operations ===
