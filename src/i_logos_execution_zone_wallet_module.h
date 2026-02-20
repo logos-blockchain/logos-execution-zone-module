@@ -22,69 +22,59 @@ public:
     // === Logos Execution Zone Wallet ===
 
     // Account Management
-    virtual WalletFfiError create_account_public(QString& output_account_id_hex) = 0;
-    virtual WalletFfiError create_account_private(QString& output_account_id_hex) = 0;
-    virtual WalletFfiError list_accounts(QJsonArray& output_list) = 0;
+    virtual QString create_account_public() = 0;
+    virtual QString create_account_private() = 0;
+    virtual QJsonArray list_accounts() = 0;
 
     // Account Queries
-    virtual WalletFfiError get_balance(
-        const QString& account_id_hex,
-        bool is_public,
-        QString& output_balance_le16_hex
-    ) = 0;
-    virtual WalletFfiError get_account_public(const QString& account_id_hex, QString& output_account_json) = 0;
-    virtual WalletFfiError get_account_private(const QString& account_id_hex, QString& output_account_json) = 0;
-    virtual WalletFfiError get_public_account_key(const QString& account_id_hex, QString& output_public_key_hex) = 0;
-    virtual WalletFfiError get_private_account_keys(const QString& account_id_hex, QString& output_keys_json) = 0;
+    virtual QString get_balance(const QString& account_id_hex, bool is_public) = 0;
+    virtual QString get_account_public(const QString& account_id_hex) = 0;
+    virtual QString get_account_private(const QString& account_id_hex) = 0;
+    virtual QString get_public_account_key(const QString& account_id_hex) = 0;
+    virtual QString get_private_account_keys(const QString& account_id_hex) = 0;
 
     // Account Encoding
     virtual QString account_id_to_base58(const QString& account_id_hex) = 0;
-    virtual WalletFfiError account_id_from_base58(const QString& base58_str, QString& output_account_id_hex) = 0;
+    virtual QString account_id_from_base58(const QString& base58_str) = 0;
 
     // Blockchain Synchronisation
     virtual WalletFfiError sync_to_block(uint64_t block_id) = 0;
-    virtual WalletFfiError get_last_synced_block(uint64_t* output_block_id) = 0;
-    virtual WalletFfiError get_current_block_height(uint64_t* output_block_height) = 0;
+    virtual uint64_t get_last_synced_block() = 0;
+    virtual uint64_t get_current_block_height() = 0;
 
     // Operations
-    virtual WalletFfiError transfer_public(
+    virtual QString transfer_public(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) = 0;
-    virtual WalletFfiError transfer_shielded(
+    virtual QString transfer_shielded(
         const QString& from_hex,
         const QString& to_keys_json,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) = 0;
-    virtual WalletFfiError transfer_deshielded(
+    virtual QString transfer_deshielded(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) = 0;
-    virtual WalletFfiError transfer_private(
+    virtual QString transfer_private(
         const QString& from_hex,
         const QString& to_keys_json,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) = 0;
-    virtual WalletFfiError transfer_shielded_owned(
+    virtual QString transfer_shielded_owned(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) = 0;
-    virtual WalletFfiError transfer_private_owned(
+    virtual QString transfer_private_owned(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) = 0;
-    virtual WalletFfiError register_public_account(const QString& account_id_hex, QString& output_result_json) = 0;
-    virtual WalletFfiError register_private_account(const QString& account_id_hex, QString& output_result_json) = 0;
+    virtual QString register_public_account(const QString& account_id_hex) = 0;
+    virtual QString register_private_account(const QString& account_id_hex) = 0;
 
     // Wallet Lifecycle
     virtual WalletFfiError create_new(
