@@ -3,6 +3,7 @@
 
 #include "i_logos_execution_zone_wallet_module.h"
 
+#include <QJsonArray>
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -31,72 +32,59 @@ public:
     //  === Logos Execution Zone Wallet  ===
 
     // Account Management
-    Q_INVOKABLE WalletFfiError create_account_public(QString& output_account_id_hex) override;
-    Q_INVOKABLE WalletFfiError create_account_private(QString& output_account_id_hex) override;
-    Q_INVOKABLE WalletFfiError list_accounts(QJsonArray& output_list) override;
+    Q_INVOKABLE QString create_account_public() override;
+    Q_INVOKABLE QString create_account_private() override;
+    Q_INVOKABLE QJsonArray list_accounts() override;
 
     // Account Queries
-    Q_INVOKABLE WalletFfiError
-    get_balance(const QString& account_id_hex, bool is_public, QString& output_balance_le16_hex) override;
-    Q_INVOKABLE WalletFfiError get_account_public(const QString& account_id_hex, QString& output_account_json) override;
-    Q_INVOKABLE WalletFfiError
-    get_account_private(const QString& account_id_hex, QString& output_account_json) override;
-    Q_INVOKABLE WalletFfiError
-    get_public_account_key(const QString& account_id_hex, QString& output_public_key_hex) override;
-    Q_INVOKABLE WalletFfiError
-    get_private_account_keys(const QString& account_id_hex, QString& output_keys_json) override;
+    Q_INVOKABLE QString get_balance(const QString& account_id_hex, bool is_public) override;
+    Q_INVOKABLE QString get_account_public(const QString& account_id_hex) override;
+    Q_INVOKABLE QString get_account_private(const QString& account_id_hex) override;
+    Q_INVOKABLE QString get_public_account_key(const QString& account_id_hex) override;
+    Q_INVOKABLE QString get_private_account_keys(const QString& account_id_hex) override;
 
     // Account Encoding
     Q_INVOKABLE QString account_id_to_base58(const QString& account_id_hex) override;
-    Q_INVOKABLE WalletFfiError
-    account_id_from_base58(const QString& base58_str, QString& output_account_id_hex) override;
+    Q_INVOKABLE QString account_id_from_base58(const QString& base58_str) override;
 
     // Blockchain Synchronisation
     Q_INVOKABLE WalletFfiError sync_to_block(uint64_t block_id) override;
-    Q_INVOKABLE WalletFfiError get_last_synced_block(uint64_t* output_block_id) override;
-    Q_INVOKABLE WalletFfiError get_current_block_height(uint64_t* output_block_height) override;
+    Q_INVOKABLE uint64_t get_last_synced_block() override;
+    Q_INVOKABLE uint64_t get_current_block_height() override;
 
     // Operations
-    Q_INVOKABLE WalletFfiError transfer_public(
+    Q_INVOKABLE QString transfer_public(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) override;
-    Q_INVOKABLE WalletFfiError transfer_shielded(
+    Q_INVOKABLE QString transfer_shielded(
         const QString& from_hex,
         const QString& to_keys_json,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) override;
-    Q_INVOKABLE WalletFfiError transfer_deshielded(
+    Q_INVOKABLE QString transfer_deshielded(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) override;
-    Q_INVOKABLE WalletFfiError transfer_private(
+    Q_INVOKABLE QString transfer_private(
         const QString& from_hex,
         const QString& to_keys_json,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) override;
-    Q_INVOKABLE WalletFfiError transfer_shielded_owned(
+    Q_INVOKABLE QString transfer_shielded_owned(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) override;
-    Q_INVOKABLE WalletFfiError transfer_private_owned(
+    Q_INVOKABLE QString transfer_private_owned(
         const QString& from_hex,
         const QString& to_hex,
-        const QString& amount_le16_hex,
-        QString& output_result_json
+        const QString& amount_le16_hex
     ) override;
-    Q_INVOKABLE WalletFfiError
-    register_public_account(const QString& account_id_hex, QString& output_result_json) override;
-    Q_INVOKABLE WalletFfiError
-    register_private_account(const QString& account_id_hex, QString& output_result_json) override;
+    Q_INVOKABLE QString register_public_account(const QString& account_id_hex) override;
+    Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
 
     // Wallet Lifecycle
     Q_INVOKABLE WalletFfiError
