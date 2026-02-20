@@ -31,6 +31,25 @@ public:
 
     //  === Logos Execution Zone Wallet  ===
 
+    // Pinata claiming
+    Q_INVOKABLE QString claim_pinata(
+        const QString& pinata_account_id_hex,
+        const QString& winner_account_id_hex,
+        const QString& solution_le16_hex
+    ) override;
+    Q_INVOKABLE QString claim_pinata_private_owned_already_initialized(
+        const QString& pinata_account_id_hex,
+        const QString& winner_account_id_hex,
+        const QString& solution_le16_hex,
+        uint64_t winner_proof_index,
+        const QString& winner_proof_siblings_json
+    ) override;
+    Q_INVOKABLE QString claim_pinata_private_owned_not_initialized(
+        const QString& pinata_account_id_hex,
+        const QString& winner_account_id_hex,
+        const QString& solution_le16_hex
+    ) override;
+
     // Account Management
     Q_INVOKABLE QString create_account_public() override;
     Q_INVOKABLE QString create_account_private() override;

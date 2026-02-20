@@ -42,6 +42,25 @@ public:
     virtual uint64_t get_last_synced_block() = 0;
     virtual uint64_t get_current_block_height() = 0;
 
+    // Pinata
+    virtual QString claim_pinata(
+        const QString& pinata_account_id_hex,
+        const QString& winner_account_id_hex,
+        const QString& solution_le16_hex
+    ) = 0;
+    virtual QString claim_pinata_private_owned_already_initialized(
+        const QString& pinata_account_id_hex,
+        const QString& winner_account_id_hex,
+        const QString& solution_le16_hex,
+        uint64_t winner_proof_index,
+        const QString& winner_proof_siblings_json
+    ) = 0;
+    virtual QString claim_pinata_private_owned_not_initialized(
+        const QString& pinata_account_id_hex,
+        const QString& winner_account_id_hex,
+        const QString& solution_le16_hex
+    ) = 0;
+
     // Operations
     virtual QString transfer_public(
         const QString& from_hex,
