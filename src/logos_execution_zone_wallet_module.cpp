@@ -137,7 +137,7 @@ LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
 // === Plugin Interface ===
 
 QString LogosExecutionZoneWalletModule::name() const {
-    return "liblogos-execution-zone-wallet-module";
+    return "liblogos_execution_zone_wallet_module";
 }
 
 QString LogosExecutionZoneWalletModule::version() const {
@@ -147,7 +147,7 @@ QString LogosExecutionZoneWalletModule::version() const {
 // === Logos Core ===
 
 void LogosExecutionZoneWalletModule::initLogos(LogosAPI* logosApiInstance) {
-    logosApi = logosApiInstance;
+    logosAPI = logosApiInstance;
 }
 
 // === Account Management ===

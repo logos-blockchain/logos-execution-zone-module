@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(logos-execution-zone-wallet-module LANGUAGES CXX)
+project(logos_execution_zone_wallet_module LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -152,7 +152,7 @@ add_library(logos_cpp_sdk INTERFACE)
 target_include_directories(logos_cpp_sdk INTERFACE "${SDK_INC}")
 
 # ---- Plugin ----
-set(PLUGIN_TARGET logos-execution-zone-wallet-module)
+set(PLUGIN_TARGET logos_execution_zone_wallet_module)
 
 qt_add_plugin(${PLUGIN_TARGET} CLASS_NAME LogosExecutionZoneWalletModule)
 
