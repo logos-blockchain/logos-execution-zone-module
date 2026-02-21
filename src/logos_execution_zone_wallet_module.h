@@ -3,6 +3,14 @@
 
 #include "i_logos_execution_zone_wallet_module.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include <wallet_ffi.h>
+#ifdef __cplusplus
+}
+#endif
+
 #include <QJsonArray>
 #include <QObject>
 #include <QString>
@@ -48,7 +56,7 @@ public:
     Q_INVOKABLE QString account_id_from_base58(const QString& base58_str) override;
 
     // Blockchain Synchronisation
-    Q_INVOKABLE WalletFfiError sync_to_block(uint64_t block_id) override;
+    Q_INVOKABLE int sync_to_block(uint64_t block_id) override;
     Q_INVOKABLE uint64_t get_last_synced_block() override;
     Q_INVOKABLE uint64_t get_current_block_height() override;
 
@@ -87,10 +95,9 @@ public:
     Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
 
     // Wallet Lifecycle
-    Q_INVOKABLE WalletFfiError
-    create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
-    Q_INVOKABLE WalletFfiError open(const QString& config_path, const QString& storage_path) override;
-    Q_INVOKABLE WalletFfiError save() override;
+    Q_INVOKABLE int create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
+    Q_INVOKABLE int open(const QString& config_path, const QString& storage_path) override;
+    Q_INVOKABLE int save() override;
 
     // Configuration
     Q_INVOKABLE QString get_sequencer_addr() override;

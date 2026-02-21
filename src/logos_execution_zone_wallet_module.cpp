@@ -302,7 +302,7 @@ QString LogosExecutionZoneWalletModule::account_id_from_base58(const QString& ba
 
 // === Blockchain Synchronisation ===
 
-WalletFfiError LogosExecutionZoneWalletModule::sync_to_block(const uint64_t block_id) {
+int LogosExecutionZoneWalletModule::sync_to_block(const uint64_t block_id) {
     return wallet_ffi_sync_to_block(walletHandle, block_id);
 }
 
@@ -548,7 +548,7 @@ QString LogosExecutionZoneWalletModule::register_private_account(const QString& 
 
 // === Wallet Lifecycle ===
 
-WalletFfiError LogosExecutionZoneWalletModule::create_new(
+int LogosExecutionZoneWalletModule::create_new(
     const QString& config_path,
     const QString& storage_path,
     const QString& password
@@ -571,7 +571,7 @@ WalletFfiError LogosExecutionZoneWalletModule::create_new(
     return SUCCESS;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
+int LogosExecutionZoneWalletModule::open(const QString& config_path, const QString& storage_path) {
     if (walletHandle) {
         qWarning() << "open: wallet is already open";
         return INTERNAL_ERROR;
@@ -589,7 +589,7 @@ WalletFfiError LogosExecutionZoneWalletModule::open(const QString& config_path, 
     return SUCCESS;
 }
 
-WalletFfiError LogosExecutionZoneWalletModule::save() {
+int LogosExecutionZoneWalletModule::save() {
     return wallet_ffi_save(walletHandle);
 }
 
