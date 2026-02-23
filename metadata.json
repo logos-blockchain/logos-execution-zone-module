@@ -5,7 +5,7 @@
   "author": "Logos Blockchain Team",
   "type": "blockchain",
   "category": "blockchain",
-  "main": "LogosExecutionZoneWalletModule",
+  "main": "liblogos_execution_zone_wallet_module",
   "dependencies": [],
   "capabilities": [],
   "include": ["libnomos.dylib"]
