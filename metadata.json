@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Logos Execution Zone Wallet Module for Logos Core",
   "author": "Logos Blockchain Team",
-  "type": "blockchain",
+  "type": "core",
   "category": "blockchain",
   "main": "liblogos_execution_zone_wallet_module",
   "dependencies": [],
