@@ -65,6 +65,7 @@ public:
 
     // Account Queries
     Q_INVOKABLE QString get_balance(const QString& account_id_hex, bool is_public) override;
+    Q_INVOKABLE QString get_balance(const QString& account_id_hex, const QString& is_public_str);
     Q_INVOKABLE QString get_account_public(const QString& account_id_hex) override;
     Q_INVOKABLE QString get_account_private(const QString& account_id_hex) override;
     Q_INVOKABLE QString get_public_account_key(const QString& account_id_hex) override;
