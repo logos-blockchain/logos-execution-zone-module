@@ -369,15 +369,16 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1772220043,
-        "narHash": "sha256-C2uhAMkyYq52viqBwTMsFFYjFJJdbZlVc4syC5aNO+A=",
+        "lastModified": 1772525593,
+        "narHash": "sha256-elnxzEEMt28P67+3LGHt6wfU6ltCtWZHI0KhrMpQaxs=",
         "owner": "logos-blockchain",
         "repo": "lssa",
-        "rev": "226ebe3e0e485e4093d381b28561a17f9db59c19",
+        "rev": "9df121704fe3ae8831d616e26157be15e1f3f26d",
         "type": "github"
       },
       "original": {
         "owner": "logos-blockchain",
+        "ref": "wallet-ffi-0.1.0",
         "repo": "lssa",
         "type": "github"
       }
