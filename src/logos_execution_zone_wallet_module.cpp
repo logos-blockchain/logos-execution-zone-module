@@ -366,24 +366,34 @@ int LogosExecutionZoneWalletModule::sync_to_block(const uint64_t block_id) {
     return wallet_ffi_sync_to_block(walletHandle, block_id);
 }
 
-uint64_t LogosExecutionZoneWalletModule::get_last_synced_block() {
+int LogosExecutionZoneWalletModule::sync_to_block(const QString& block_id_str) {
+    bool ok = false;
+    const uint64_t block_id = block_id_str.trimmed().toULongLong(&ok);
+    if (!ok) {
+        qWarning() << "sync_to_block: invalid block id string:" << block_id_str;
+        return -1;
+    }
+    return sync_to_block(block_id);
+}
+
+int LogosExecutionZoneWalletModule::get_last_synced_block() {
     uint64_t block_id = 0;
     const WalletFfiError error = wallet_ffi_get_last_synced_block(walletHandle, &block_id);
     if (error != SUCCESS) {
         qWarning() << "get_last_synced_block: wallet FFI error" << error;
         return 0;
     }
-    return block_id;
+    return static_cast<int>(block_id);
 }
 
-uint64_t LogosExecutionZoneWalletModule::get_current_block_height() {
+int LogosExecutionZoneWalletModule::get_current_block_height() {
     uint64_t block_height = 0;
     const WalletFfiError error = wallet_ffi_get_current_block_height(walletHandle, &block_height);
     if (error != SUCCESS) {
         qWarning() << "get_current_block_height: wallet FFI error" << error;
         return 0;
     }
-    return block_height;
+    return static_cast<int>(block_height);
 }
 
 // === Pinata claiming ===
