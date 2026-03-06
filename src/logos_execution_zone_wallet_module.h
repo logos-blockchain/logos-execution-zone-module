@@ -77,8 +77,9 @@ public:
 
     // Blockchain Synchronisation
     Q_INVOKABLE int sync_to_block(uint64_t block_id) override;
-    Q_INVOKABLE uint64_t get_last_synced_block() override;
-    Q_INVOKABLE uint64_t get_current_block_height() override;
+    Q_INVOKABLE int sync_to_block(const QString& block_id_str) override;
+    Q_INVOKABLE int get_last_synced_block() override;
+    Q_INVOKABLE int get_current_block_height() override;
 
     // Operations
     Q_INVOKABLE QString transfer_public(

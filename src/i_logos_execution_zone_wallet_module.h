@@ -31,8 +31,9 @@ public:
 
     // Blockchain Synchronisation
     virtual int sync_to_block(uint64_t block_id) = 0;
-    virtual uint64_t get_last_synced_block() = 0;
-    virtual uint64_t get_current_block_height() = 0;
+    virtual int sync_to_block(const QString& block_id_str) = 0;
+    virtual int get_last_synced_block() = 0;
+    virtual int get_current_block_height() = 0;
 
     // Pinata
     virtual QString claim_pinata(
