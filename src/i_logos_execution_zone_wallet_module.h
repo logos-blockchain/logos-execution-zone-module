@@ -88,6 +88,11 @@ public:
     virtual QString register_public_account(const QString& account_id_hex) = 0;
     virtual QString register_private_account(const QString& account_id_hex) = 0;
 
+    /// Submit an arbitrary public transaction.
+    /// tx_json: {"program_id":"hex","accounts":["hex",...],"instruction":"hex","signer_account":"hex"}
+    /// Returns tx_hash on success, empty string on failure.
+    virtual QString send_public_transaction(const QString& tx_json) = 0;
+
     // Wallet Lifecycle
     virtual int create_new(
         const QString& config_path,

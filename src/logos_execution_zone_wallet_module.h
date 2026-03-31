@@ -114,6 +114,7 @@ public:
     ) override;
     Q_INVOKABLE QString register_public_account(const QString& account_id_hex) override;
     Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
+    Q_INVOKABLE QString send_public_transaction(const QString& tx_json) override;
 
     // Wallet Lifecycle
     Q_INVOKABLE int create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
