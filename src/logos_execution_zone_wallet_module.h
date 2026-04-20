@@ -18,7 +18,7 @@ extern "C" {
 
 class LogosExecutionZoneWalletModule : public QObject, public PluginInterface, public ILogosExecutionZoneWalletModule {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID ILogosExecutionZoneWalletModule_iid FILE LOGOS_EXECUTION_ZONE_WALLET_MODULE_METADATA_FILE)
+    Q_PLUGIN_METADATA(IID ILogosExecutionZoneWalletModule_iid FILE "metadata.json")
     Q_INTERFACES(PluginInterface ILogosExecutionZoneWalletModule)
 
 private:
