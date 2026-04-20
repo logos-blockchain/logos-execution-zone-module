@@ -152,7 +152,7 @@ add_library(logos_cpp_sdk INTERFACE)
 target_include_directories(logos_cpp_sdk INTERFACE "${SDK_INC}")
 
 # ---- Plugin ----
-set(PLUGIN_TARGET logos_execution_zone_wallet_module)
+set(PLUGIN_TARGET lez_wallet_module_plugin)
 
 qt_add_plugin(${PLUGIN_TARGET} CLASS_NAME LogosExecutionZoneWalletModule)
 
@@ -181,6 +181,11 @@ target_compile_definitions(${PLUGIN_TARGET} PRIVATE
 )
 
 add_dependencies(${PLUGIN_TARGET} logos_execution_zone_libs)
+
+set_target_properties(${PLUGIN_TARGET} PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "lez_wallet_module_plugin"
+)
 
 if(APPLE)
     set_target_properties(${PLUGIN_TARGET} PROPERTIES
