@@ -101,7 +101,7 @@
             program =
               "${pkgs.writeShellScriptBin "inspect-module" ''
                 exec ${logosModuleViewerPackage}/bin/logos-module-viewer \
-                  --module ${logosExecutionZoneWalletModuleLib}/lib/liblogos_execution_zone_wallet_module.${extension}
+                  --module ${logosExecutionZoneWalletModuleLib}/lib/lez_wallet_module_plugin.${extension}
               ''}/bin/inspect-module";
           };
         in
