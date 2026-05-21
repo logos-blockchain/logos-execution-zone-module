@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(LogosExecutionZoneWalletModule LANGUAGES CXX)
+project(LogosExecutionZone LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,7 +12,7 @@ else()
 endif()
 
 logos_module(
-    NAME lez_wallet_module
+    NAME logos_execution_zone
     SOURCES
         src/logos_execution_zone_wallet_module.h
         src/logos_execution_zone_wallet_module.cpp

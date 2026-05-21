@@ -189,7 +189,7 @@ LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
 // === Plugin Interface ===
 
 QString LogosExecutionZoneWalletModule::name() const {
-    return "lez_wallet_module";
+    return "logos_execution_zone";
 }
 
 QString LogosExecutionZoneWalletModule::version() const {
