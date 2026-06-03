@@ -93,6 +93,23 @@ static QString transferResultToJson(const FfiTransferResult* result, const QStri
     return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
 }
 
+// Builds JSON { success, tx_hash, secrets, error } for both success (result + empty error) and failure (nullptr + errorMessage) in case of generic transaction.
+static QString genericTransactionResultToJson(const FfiTransactionResult* result, const QString& errorMessage) {
+    QVariantMap map;
+    const bool isError = !errorMessage.isEmpty();
+    map[JsonKeys::Success] = !isError && result && result->success;
+    map[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? QString::fromUtf8(result->tx_hash) : QString();
+    QVariantList secrets;
+    if (!isError && result && result->secrets_data) {
+        for (uintptr_t i = 0; i < result->secrets_size; ++i) {
+            secrets.append(bytes32ToHex(result->secrets_data[i]));
+        }
+    }
+    map[JsonKeys::Secrets] = secrets;
+    map[JsonKeys::Error] = errorMessage;
+    return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
+}
+
 static QString ffiAccountToJson(const FfiAccount& account) {
     QVariantMap map;
     map[JsonKeys::ProgramOwner] = bytesToHex(reinterpret_cast<const uint8_t*>(account.program_owner.data), 32);
@@ -723,6 +740,106 @@ QString LogosExecutionZoneWalletModule::register_private_account(const QString& 
     }
     QString resultJson = transferResultToJson(&result, QString());
     wallet_ffi_free_transfer_result(&result);
+    return resultJson;
+}
+
+QList<uint32_t> LogosExecutionZoneWalletModule::serialization_helper(const QList<uint8_t>& input_data) {
+    const uint8_t *input_instruction_data = input_data.constData();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(input_data.size());
+    FfiInstructionWords raw_words = wallet_ffi_serialization_helper(input_instruction_data, input_instruction_data_size);
+    if (raw_words.error != SUCCESS) {
+        qWarning() << "serialization_helper: wallet FFI error" << raw_words.error;
+        return QList<uint32_t> {};
+    }
+    QList<uint32_t> result(raw_words.instruction_words, raw_words.instruction_words + raw_words.instruction_words_size);
+    wallet_ffi_free_instruction_words(&raw_words);
+    return result;
+}
+
+QString send_generic_public_transaction(
+        const QList<FfiBytes32>& account_ids,
+        const QList<bool>& signing_requirements, 
+        const QList<uint8_t>& instruction,
+        const QList<uint8_t>& program_elf,
+        const QList<QList<uint8_t>>& program_dependencies,
+) {
+    QList<FfiAccountIdentity> identities_resolved;
+    identities_resolved.reserve(account_ids.size());
+
+    for (int i = 0; i < account_ids.size(); ++i) {
+        FfiAccountIdentity acc_identity{};
+        WalletFfiError error = wallet_ffi_resolve_public_account(account_ids[i], signing_requirements[i], &acc_identity);
+        if (error != SUCCESS) {
+            qWarning() << "wallet_ffi_resolve_public_account failed for index" << i << " : wallet FFI error" << error;
+            return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_public_account: wallet FFI error ") + QString::number(error));
+        }
+        resolved.append(acc_identity);
+    }
+
+    const FfiAccountIdentity *account_identities = resolved.constData();
+    uintptr_t account_identities_size = static_cast<uintptr_t>(resolved.size());
+
+    const uint8_t *input_instruction_data = instruction.constData();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+    FfiInstructionWords raw_words = wallet_ffi_serialization_helper(input_instruction_data, input_instruction_data_size);
+    if (raw_words.error != SUCCESS) {
+        qWarning() << "wallet_ffi_resolve_public_account failed at instruction serialization: wallet FFI error" << raw_words.error;
+        return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_public_account: wallet FFI error ") + QString::number(error));
+    }
+
+    FfiProgram main_program {};
+
+    const uint8_t *program_elf_data = program_elf.constData();
+    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
+
+    main_program.elf_data = program_elf_data;
+    main_program.elf_size = program_elf_size;
+
+    QList<FfiProgram> ffi_program_dependencies;
+
+    for (int i = 0; i < program_dependencies.size(); ++i) {
+        FfiProgram program{};
+
+        const uint8_t *program_elf_data = program_dependencies[i].constData();
+        uintptr_t program_elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
+
+        program.elf_data = program_elf_data;
+        program.elf_size = program_elf_size;
+
+        ffi_program_dependencies.append(program);
+    }
+
+    const FfiProgram *dependencies_data = ffi_program_dependencies.constData();
+    uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
+
+    FfiProgramWithDependencies program_with_dependencies {};
+
+    program_with_dependencies.program = main_program;
+    program_with_dependencies.deps = dependencies_data;
+    program_with_dependencies.deps_size = dependencies_size;
+
+    FfiTransactionResult result {};
+
+    const WalletFfiError error = wallet_ffi_send_generic_public_transaction(
+        walletHandle, 
+        account_identities,
+        account_identities_size,
+        raw_words.instruction_words, 
+        raw_words.instruction_words_size,
+        &program_with_dependencies,
+        result,
+    );
+
+    for (FfiAccountIdentity& acc_identity : identities_resolved) {
+        wallet_ffi_free_account_identity(&acc_identity);
+    }
+
+    if (error != SUCCESS) {
+        qWarning() << "send_generic_public_transaction: wallet FFI error" << error;
+        return transferResultToJson(nullptr, QStringLiteral("send_generic_public_transaction: wallet FFI error ") + QString::number(error));
+    }
+    QString resultJson = genericTransactionResultToJson(&result, QString());
+    wallet_ffi_free_transaction_result(&result);
     return resultJson;
 }
 

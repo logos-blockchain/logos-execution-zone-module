@@ -88,6 +88,22 @@ public:
     virtual QString register_public_account(const QString& account_id_hex) = 0;
     virtual QString register_private_account(const QString& account_id_hex) = 0;
 
+    virtual QList<uint32_t> serialization_helper(const QList<uint8_t>& input_data) = 0;
+
+    virtual QString send_generic_public_transaction(
+        const QList<QString>& account_ids,
+        const QList<bool>& signing_requirements, 
+        const QList<uint8_t>& instruction,
+        const QList<uint8_t>& program_elf,
+        const QList<QList<uint8_t>>& program_dependencies,
+    ) = 0;
+    virtual QString send_generic_private_transaction(
+        const QList<QString>& account_ids,
+        const QList<uint8_t>& instruction,
+        const QList<uint8_t>& program_elf,
+        const QList<QList<uint8_t>>& program_dependencies,
+    ) = 0;
+
     // Wallet Lifecycle
     virtual int create_new(
         const QString& config_path,

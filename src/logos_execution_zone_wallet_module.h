@@ -15,6 +15,7 @@ extern "C" {
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QList>
 
 class LogosExecutionZoneWalletModule : public QObject, public PluginInterface, public ILogosExecutionZoneWalletModule {
     Q_OBJECT
@@ -114,6 +115,22 @@ public:
     ) override;
     Q_INVOKABLE QString register_public_account(const QString& account_id_hex) override;
     Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
+
+    Q_INVOKABLE QList<uint32_t> serialization_helper(const QList<uint8_t>& input_data) override;
+
+    Q_INVOKABLE QString send_generic_public_transaction(
+        const QList<FfiBytes32>& account_ids,
+        const QList<bool>& signing_requirements, 
+        const QList<uint8_t>& instruction,
+        const QList<uint8_t>& program_elf,
+        const QList<QList<uint8_t>>& program_dependencies,
+    ) override;
+    Q_INVOKABLE QString send_generic_private_transaction(
+        const QList<FfiBytes32>& account_ids,
+        const QList<uint8_t>& instruction,
+        const QList<uint8_t>& program_elf,
+        const QList<QList<uint8_t>>& program_dependencies,
+    ) override;
 
     // Wallet Lifecycle
     Q_INVOKABLE int create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
