@@ -756,8 +756,61 @@ QList<uint32_t> LogosExecutionZoneWalletModule::serialization_helper(const QList
     return result;
 }
 
+QList<uint8_t> LogosExecutionZoneWalletModule::token_elf() {
+    FfiProgram ffi_program {};
+    WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
+    if (error != SUCCESS) {
+        qWarning() << "authenticated_transfer_elf: wallet FFI error " << error;
+        return QList<uint8_t> {};
+    }
+
+    QList<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + raw_words.elf_size);
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+QList<uint8_t> LogosExecutionZoneWalletModule::amm_elf() {
+    FfiProgram ffi_program {};
+    WalletFfiError error = wallet_ffi_amm_elf(&ffi_program);
+    if (error != SUCCESS) {
+        qWarning() << "authenticated_transfer_elf: wallet FFI error " << error;
+        return QList<uint8_t> {};
+    }
+
+    QList<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + raw_words.elf_size);
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+QList<uint8_t> LogosExecutionZoneWalletModule::ata_elf() {
+    FfiProgram ffi_program {};
+    WalletFfiError error = wallet_ffi_ata_elf(&ffi_program);
+    if (error != SUCCESS) {
+        qWarning() << "authenticated_transfer_elf: wallet FFI error " << error;
+        return QList<uint8_t> {};
+    }
+
+    QList<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + raw_words.elf_size);
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+QList<uint8_t> LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
+    FfiProgram ffi_program {};
+    WalletFfiError error = wallet_ffi_transfer_elf(&ffi_program);
+    if (error != SUCCESS) {
+        qWarning() << "authenticated_transfer_elf: wallet FFI error " << error;
+        return QList<uint8_t> {};
+    }
+
+    QList<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + raw_words.elf_size);
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+
 QString send_generic_public_transaction(
-        const QList<FfiBytes32>& account_ids,
+        const QList<QString>& account_ids,
         const QList<bool>& signing_requirements, 
         const QList<uint8_t>& instruction,
         const QList<uint8_t>& program_elf,
@@ -768,7 +821,14 @@ QString send_generic_public_transaction(
 
     for (int i = 0; i < account_ids.size(); ++i) {
         FfiAccountIdentity acc_identity{};
-        WalletFfiError error = wallet_ffi_resolve_public_account(account_ids[i], signing_requirements[i], &acc_identity);
+
+        FfiBytes32 id{};
+        if (!hexToBytes32(account_ids[i], &id)) {
+            qWarning() << "wallet_ffi_resolve_public_account: invalid account_id_hex";
+            return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_public_account: invalid account_id_hex"));
+        }
+
+        WalletFfiError error = wallet_ffi_resolve_public_account(id, signing_requirements[i], &acc_identity);
         if (error != SUCCESS) {
             qWarning() << "wallet_ffi_resolve_public_account failed for index" << i << " : wallet FFI error" << error;
             return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_public_account: wallet FFI error ") + QString::number(error));
@@ -837,6 +897,123 @@ QString send_generic_public_transaction(
     if (error != SUCCESS) {
         qWarning() << "send_generic_public_transaction: wallet FFI error" << error;
         return transferResultToJson(nullptr, QStringLiteral("send_generic_public_transaction: wallet FFI error ") + QString::number(error));
+    }
+    QString resultJson = genericTransactionResultToJson(&result, QString());
+    wallet_ffi_free_transaction_result(&result);
+    return resultJson;
+}
+
+QString send_generic_private_transaction(
+        const QList<QString>& account_ids,
+        const QList<uint8_t>& instruction,
+        const QList<uint8_t>& program_elf,
+        const QList<QList<uint8_t>>& program_dependencies,
+) {
+    QList<FfiAccountIdentity> identities_resolved;
+    identities_resolved.reserve(account_ids.size());
+
+    for (int i = 0; i < account_ids.size(); ++i) {
+        FfiAccountIdentity acc_identity{};
+
+        FfiBytes32 id{};
+        if (!hexToBytes32(account_ids[i], &id)) {
+            qWarning() << "wallet_ffi_resolve_private_account: invalid account_id_hex";
+            return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_private_account: invalid account_id_hex"));
+        }
+
+        WalletFfiError error = wallet_ffi_resolve_private_account(walletHandle, account_ids[i], &acc_identity);
+        if (error != SUCCESS) {
+            qWarning() << "wallet_ffi_resolve_private_account failed for index" << i << " : wallet FFI error" << error;
+            return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_private_account: wallet FFI error ") + QString::number(error));
+        }
+        resolved.append(acc_identity);
+    }
+
+    const FfiAccountIdentity *account_identities = resolved.constData();
+    uintptr_t account_identities_size = static_cast<uintptr_t>(resolved.size());
+
+    const uint8_t *input_instruction_data = instruction.constData();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+    FfiInstructionWords raw_words = wallet_ffi_serialization_helper(input_instruction_data, input_instruction_data_size);
+    if (raw_words.error != SUCCESS) {
+        qWarning() << "wallet_ffi_resolve_private_account failed at instruction serialization: wallet FFI error" << raw_words.error;
+        return transferResultToJson(nullptr, QStringLiteral("wallet_ffi_resolve_private_account: wallet FFI error ") + QString::number(error));
+    }
+
+    FfiProgram main_program {};
+
+    const uint8_t *program_elf_data = program_elf.constData();
+    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
+
+    main_program.elf_data = program_elf_data;
+    main_program.elf_size = program_elf_size;
+
+    QList<FfiProgram> ffi_program_dependencies;
+
+    for (int i = 0; i < program_dependencies.size(); ++i) {
+        FfiProgram program{};
+
+        const uint8_t *program_elf_data = program_dependencies[i].constData();
+        uintptr_t program_elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
+
+        program.elf_data = program_elf_data;
+        program.elf_size = program_elf_size;
+
+        ffi_program_dependencies.append(program);
+    }
+
+    const FfiProgram *dependencies_data = ffi_program_dependencies.constData();
+    uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
+
+    FfiProgramWithDependencies program_with_dependencies {};
+
+    program_with_dependencies.program = main_program;
+    program_with_dependencies.deps = dependencies_data;
+    program_with_dependencies.deps_size = dependencies_size;
+
+    FfiTransactionResult result {};
+
+    const WalletFfiError error = wallet_ffi_send_generic_private_transaction(
+        walletHandle, 
+        account_identities,
+        account_identities_size,
+        raw_words.instruction_words, 
+        raw_words.instruction_words_size,
+        &program_with_dependencies,
+        result,
+    );
+
+    for (FfiAccountIdentity& acc_identity : identities_resolved) {
+        wallet_ffi_free_account_identity(&acc_identity);
+    }
+
+    if (error != SUCCESS) {
+        qWarning() << "send_generic_private_transaction: wallet FFI error" << error;
+        return transferResultToJson(nullptr, QStringLiteral("send_generic_private_transaction: wallet FFI error ") + QString::number(error));
+    }
+    QString resultJson = genericTransactionResultToJson(&result, QString());
+    wallet_ffi_free_transaction_result(&result);
+    return resultJson;
+}
+
+QString send_program_deployment_transaction(
+        const QList<uint8_t>& program_elf,
+) {
+    FfiTransactionResult result {};
+
+    const uint8_t *program_elf_data = program_elf.constData();
+    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
+
+    const WalletFfiError error = wallet_ffi_program_deployment(
+        walletHandle, 
+        elf_data,
+        elf_size,
+        result,
+    );
+
+    if (error != SUCCESS) {
+        qWarning() << "send_program_deployment_transaction: wallet FFI error" << error;
+        return transferResultToJson(nullptr, QStringLiteral("send_program_deployment_transaction: wallet FFI error ") + QString::number(error));
     }
     QString resultJson = genericTransactionResultToJson(&result, QString());
     wallet_ffi_free_transaction_result(&result);

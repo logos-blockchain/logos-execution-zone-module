@@ -118,18 +118,26 @@ public:
 
     Q_INVOKABLE QList<uint32_t> serialization_helper(const QList<uint8_t>& input_data) override;
 
+    Q_INVOKABLE QList<uint8_t> authenticated_transfer_elf() override;
+    Q_INVOKABLE QList<uint8_t> token_elf() override;
+    Q_INVOKABLE QList<uint8_t> amm_elf() override;
+    Q_INVOKABLE QList<uint8_t> ata_elf() override;
+
     Q_INVOKABLE QString send_generic_public_transaction(
-        const QList<FfiBytes32>& account_ids,
+        const QList<QString>& account_ids,
         const QList<bool>& signing_requirements, 
         const QList<uint8_t>& instruction,
         const QList<uint8_t>& program_elf,
         const QList<QList<uint8_t>>& program_dependencies,
     ) override;
     Q_INVOKABLE QString send_generic_private_transaction(
-        const QList<FfiBytes32>& account_ids,
+        const QList<QString>& account_ids,
         const QList<uint8_t>& instruction,
         const QList<uint8_t>& program_elf,
         const QList<QList<uint8_t>>& program_dependencies,
+    ) override;
+    Q_INVOKABLE QString send_program_deployment_transaction(
+        const QList<uint8_t>& program_elf,
     ) override;
 
     // Wallet Lifecycle

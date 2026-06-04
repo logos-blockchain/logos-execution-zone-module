@@ -90,6 +90,11 @@ public:
 
     virtual QList<uint32_t> serialization_helper(const QList<uint8_t>& input_data) = 0;
 
+    virtual QList<uint8_t> authenticated_transfer_elf() = 0;
+    virtual QList<uint8_t> token_elf() = 0;
+    virtual QList<uint8_t> amm_elf() = 0;
+    virtual QList<uint8_t> ata_elf() = 0;
+
     virtual QString send_generic_public_transaction(
         const QList<QString>& account_ids,
         const QList<bool>& signing_requirements, 
@@ -102,6 +107,9 @@ public:
         const QList<uint8_t>& instruction,
         const QList<uint8_t>& program_elf,
         const QList<QList<uint8_t>>& program_dependencies,
+    ) = 0;
+    virtual QString send_program_deployment_transaction(
+        const QList<uint8_t>& program_elf,
     ) = 0;
 
     // Wallet Lifecycle
