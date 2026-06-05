@@ -128,16 +128,16 @@ public:
         const QList<bool>& signing_requirements, 
         const QList<uint8_t>& instruction,
         const QList<uint8_t>& program_elf,
-        const QList<QList<uint8_t>>& program_dependencies,
+        const QList<QList<uint8_t>>& program_dependencies
     ) override;
     Q_INVOKABLE QString send_generic_private_transaction(
         const QList<QString>& account_ids,
         const QList<uint8_t>& instruction,
         const QList<uint8_t>& program_elf,
-        const QList<QList<uint8_t>>& program_dependencies,
+        const QList<QList<uint8_t>>& program_dependencies
     ) override;
     Q_INVOKABLE QString send_program_deployment_transaction(
-        const QList<uint8_t>& program_elf,
+        const QList<uint8_t>& program_elf
     ) override;
 
     // Wallet Lifecycle

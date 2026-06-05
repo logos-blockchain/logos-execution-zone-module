@@ -891,17 +891,17 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1780669896,
-        "narHash": "sha256-EfR9yD9Vz8nl639ZZGb/rjp8PJJhbC4NTVorshmQAxk=",
+        "lastModified": 1780670706,
+        "narHash": "sha256-ST5KExyHCZidz6QnMa3jd1S9qQJnnQm0q2agdEzHXXc=",
         "owner": "logos-blockchain",
         "repo": "lssa",
-        "rev": "8a4a6cd12a43adc0f7379c5866c89b400200408d",
+        "rev": "c37a3c30a96515cba756174da1da4137ff025d7f",
         "type": "github"
       },
       "original": {
         "owner": "logos-blockchain",
         "repo": "lssa",
-        "rev": "8a4a6cd12a43adc0f7379c5866c89b400200408d",
+        "rev": "c37a3c30a96515cba756174da1da4137ff025d7f",
         "type": "github"
       }
     },
