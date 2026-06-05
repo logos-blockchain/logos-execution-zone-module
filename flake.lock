@@ -670,11 +670,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780583907,
-        "narHash": "sha256-BVYWW8sFPmTrWCUZc9IgPRI3C0dPw1aEz0ddphlRrho=",
+        "lastModified": 1780614855,
+        "narHash": "sha256-zPA+Otg8zYxSj9NIf003Uyp0PWMOBNOcyBbyVSnBLk4=",
         "owner": "logos-co",
         "repo": "logos-cpp-sdk",
-        "rev": "760916e97b1feff928c1d86ef61a28e043326778",
+        "rev": "3bdd8858f52bfefbc647536f2a9d1b8a5fe7dede",
         "type": "github"
       },
       "original": {
@@ -891,17 +891,17 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1780596917,
-        "narHash": "sha256-VD7hE52jHe04IWmTZFDY92YrJwqxSrzbk7wMvyVZOE8=",
+        "lastModified": 1780669896,
+        "narHash": "sha256-EfR9yD9Vz8nl639ZZGb/rjp8PJJhbC4NTVorshmQAxk=",
         "owner": "logos-blockchain",
         "repo": "lssa",
-        "rev": "76696a5d084236a234abc62c2b8c0d04acbf5e20",
+        "rev": "8a4a6cd12a43adc0f7379c5866c89b400200408d",
         "type": "github"
       },
       "original": {
         "owner": "logos-blockchain",
         "repo": "lssa",
-        "rev": "76696a5d084236a234abc62c2b8c0d04acbf5e20",
+        "rev": "8a4a6cd12a43adc0f7379c5866c89b400200408d",
         "type": "github"
       }
     },
@@ -1140,11 +1140,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780584506,
-        "narHash": "sha256-hQfGPYReBMJ2zemlfJ7XBT0XOFBCZav6Nq23VY2FVjs=",
+        "lastModified": 1780614890,
+        "narHash": "sha256-5reMb1hZ3287uNtgtBKyEYWzAWxTWq/7JQ+FZk++awA=",
         "owner": "logos-co",
         "repo": "logos-module-builder",
-        "rev": "bd647c1e255abbccfb9e9a1de96db6b25ca22fd5",
+        "rev": "c975aa5b1d79402b701a5e8483d286127fd7fbb3",
         "type": "github"
       },
       "original": {
@@ -1801,11 +1801,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780583965,
-        "narHash": "sha256-mp2J60ULkWIORERo/rd4BTRcFjBXvdL+JmVg3URMT6M=",
+        "lastModified": 1780603603,
+        "narHash": "sha256-CV7R+lwNIP0baXZtE9uNjqu7qDLiANwyGfMkHfTjcl0=",
         "owner": "logos-co",
         "repo": "logos-module",
-        "rev": "740d484bb1f90f3ed6697a7cadc99766a0926226",
+        "rev": "780894dd40ebc8eded0fa97b1729286f31571cfb",
         "type": "github"
       },
       "original": {
