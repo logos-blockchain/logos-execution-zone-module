@@ -195,7 +195,10 @@ static bool jsonArrayHexToSiblings32(const QString& json_array_str, QByteArray& 
     return true;
 }
 
-LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() = default;
+LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() {
+    qRegisterMetaType<QList<uint32_t>>("QList<uint32_t>");
+    qRegisterMetaType<QList<QByteArray>>("QList<QByteArray>");
+}
 
 LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
     if (walletHandle) {
