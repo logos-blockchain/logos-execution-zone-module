@@ -18,5 +18,9 @@
           packages.default = "wallet";
         };
       };
+      tests = {
+        dir = ./tests;
+        mockCLibs = [ "wallet_ffi" ];
+      };
     };
 }
