@@ -118,7 +118,7 @@ public:
 
     Q_INVOKABLE QList<uint32_t> serialization_helper(const QList<uint8_t>& input_data) override;
 
-    Q_INVOKABLE QList<uint8_t> authenticated_transfer_elf() override;
+    Q_INVOKABLE QString authenticated_transfer_elf(QList<uint8_t>& output) override;
     Q_INVOKABLE QList<uint8_t> token_elf() override;
     Q_INVOKABLE QList<uint8_t> amm_elf() override;
     Q_INVOKABLE QList<uint8_t> ata_elf() override;
