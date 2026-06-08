@@ -802,18 +802,18 @@ QList<uint8_t> LogosExecutionZoneWalletModule::ata_elf() {
     return result;
 }
 
-QString LogosExecutionZoneWalletModule::authenticated_transfer_elf(QList<uint8_t>& output) {
+QByteArray LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
     FfiProgram ffi_program {};
     WalletFfiError error = wallet_ffi_transfer_elf(&ffi_program);
     if (error != SUCCESS) {
-        return QString("authenticated_transfer_elf: wallet FFI error %1").arg(error);
+        qWarning() << "authenticated_transfer_elf: wallet FFI error " << error;
+        return QByteArray();
     }
 
-    output = QList<uint8_t>(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
+    QByteArray result(reinterpret_cast<const char*>(ffi_program.elf_data), ffi_program.elf_size);
     wallet_ffi_free_ffi_program(&ffi_program);
-    return QString();
+    return result;
 }
-
 
 QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
         const QList<QString>& account_ids,

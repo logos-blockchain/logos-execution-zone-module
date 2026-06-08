@@ -90,7 +90,7 @@ public:
 
     virtual QList<uint32_t> serialization_helper(const QList<uint8_t>& input_data) = 0;
 
-    virtual QString authenticated_transfer_elf(QList<uint8_t>& output) = 0;
+    virtual QByteArray authenticated_transfer_elf() = 0;
     virtual QList<uint8_t> token_elf() = 0;
     virtual QList<uint8_t> amm_elf() = 0;
     virtual QList<uint8_t> ata_elf() = 0;
