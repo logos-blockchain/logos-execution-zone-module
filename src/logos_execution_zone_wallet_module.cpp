@@ -7,6 +7,13 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QVariantMap>
 
+#include <QtCore/QMetaType>
+
+static const bool s_metaTypesRegistered = []() {
+    qRegisterMetaType<QJsonArray>("QJsonArray");
+    return true;
+}();
+
 static QString bytesToHex(const uint8_t* data, const size_t length) {
     const QByteArray bytearray(reinterpret_cast<const char*>(data), static_cast<int>(length));
     return QString::fromLatin1(bytearray.toHex());
