@@ -728,24 +728,39 @@ QString LogosExecutionZoneWalletModule::register_private_account(const QString& 
 
 // === Wallet Lifecycle ===
 
-int LogosExecutionZoneWalletModule::create_new(
+QString LogosExecutionZoneWalletModule::create_new(
     const QString& config_path,
     const QString& storage_path,
     const QString& password
 ) {
     if (walletHandle) {
         qWarning() << "create_new: wallet is already open";
-        return INTERNAL_ERROR;
+        return transferResultToJson(nullptr, QStringLiteral("create_new: wallet is already open"));
     }
 
     const QByteArray config_utf8 = config_path.toUtf8();
     const QByteArray storage_utf8 = storage_path.toUtf8();
     const QByteArray password_utf8 = password.toUtf8();
 
-    walletHandle = wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
-    if (!walletHandle) {
+    FfiCreateWalletResult create_result = wallet_ffi_create_new(config_utf8.constData(), storage_utf8.constData(), password_utf8.constData());
+    if (!create_result.wallet) {
         qWarning() << "create_new: wallet_ffi_create_new returned null";
-        return INTERNAL_ERROR;
+        return transferResultToJson(nullptr, QStringLiteral("create_new: wallet_ffi_create_new returned null"));
+    }
+
+    walletHandle = create_result.wallet;
+
+    return QString::fromUtf8(*(create_result.mnemonic));
+}
+
+int LogosExecutionZoneWalletModule::restore_storage(const QString& mnemonic, const QString password) {
+    const QByteArray mnemonic_utf8 = mnemonic.toUtf8();
+    const QByteArray password_utf8 = password.toUtf8();
+
+    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic_utf8.constData(), password_utf8.constData());
+    if (error != SUCCESS) {
+        qWarning() << "restore_storage: wallet FFI error" << error;
+        return error;
     }
 
     return SUCCESS;

@@ -116,7 +116,8 @@ public:
     Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
 
     // Wallet Lifecycle
-    Q_INVOKABLE int create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
+    Q_INVOKABLE QString create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
+    Q_INVOKABLE int restore_storage(const QString& mnemonic, const QString password) override;
     Q_INVOKABLE int open(const QString& config_path, const QString& storage_path) override;
     Q_INVOKABLE int save() override;
 

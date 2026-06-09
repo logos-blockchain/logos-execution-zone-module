@@ -89,11 +89,12 @@ public:
     virtual QString register_private_account(const QString& account_id_hex) = 0;
 
     // Wallet Lifecycle
-    virtual int create_new(
+    virtual QString create_new(
         const QString& config_path,
         const QString& storage_path,
         const QString& password
     ) = 0;
+    virtual int restore_storage(const QString& mnemonic, const QString password) = 0;
     virtual int open(const QString& config_path, const QString& storage_path) = 0;
     virtual int save() = 0;
 
