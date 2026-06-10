@@ -1,5 +1,5 @@
 {
-  description = "Logos Execution Zone Wallet Module - Qt6 Plugin";
+  description = "Logos Execution Zone Wallet Module";
 
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";

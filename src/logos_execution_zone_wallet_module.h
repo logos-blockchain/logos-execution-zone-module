@@ -1,130 +1,80 @@
 #ifndef LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
 #define LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
 
-#include "i_logos_execution_zone_wallet_module.h"
+#include <cstdint>
+#include <string>
 
-#ifdef __cplusplus
+#include <logos_json.h>
+
 extern "C" {
-#endif
 #include <wallet_ffi.h>
-#ifdef __cplusplus
 }
-#endif
 
-#include <QJsonArray>
-#include <QObject>
-#include <QString>
-#include <QVariantList>
-
-class LogosExecutionZoneWalletModule : public QObject, public PluginInterface, public ILogosExecutionZoneWalletModule {
-    Q_OBJECT
-    Q_PLUGIN_METADATA(IID ILogosExecutionZoneWalletModule_iid FILE "metadata.json")
-    Q_INTERFACES(PluginInterface ILogosExecutionZoneWalletModule)
-
-private:
-    LogosAPI* logosApi = nullptr;
-    WalletHandle* walletHandle = nullptr;
-
+// Universal (Qt-free) execution-zone wallet module. The Qt glue (provider
+// object + plugin) is generated from this header by logos-cpp-generator, which
+// maps the std return types below to the Qt signatures callers invoke:
+//   std::string -> QString, int64_t -> int, LogosList -> QVariantList.
+//
+// NOTE: the generator parses this header line-by-line and only recognises a
+// method when its declaration ends with ';' on a single line. Keep every
+// method declaration on ONE line — multi-line signatures are silently dropped.
+class LogosExecutionZoneWalletModule {
 public:
     LogosExecutionZoneWalletModule();
-    ~LogosExecutionZoneWalletModule() override;
+    ~LogosExecutionZoneWalletModule();
 
-    // === Plugin Interface ===
-    [[nodiscard]] QString name() const override;
-    [[nodiscard]] QString version() const override;
+    LogosExecutionZoneWalletModule(const LogosExecutionZoneWalletModule&) = delete;
+    LogosExecutionZoneWalletModule& operator=(const LogosExecutionZoneWalletModule&) = delete;
 
-    //  === Logos Core ===
+    std::string name() const;
+    std::string version() const;
 
-    Q_INVOKABLE void initLogos(LogosAPI* logosApiInstance) override;
+    // === Wallet Lifecycle ===
+    int64_t create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
+    int64_t open(const std::string& config_path, const std::string& storage_path);
+    int64_t save();
 
-    //  === Logos Execution Zone Wallet  ===
+    // === Account Management ===
+    std::string create_account_public();
+    std::string create_account_private();
+    LogosList list_accounts();
 
-    // Pinata claiming
-    Q_INVOKABLE QString claim_pinata(
-        const QString& pinata_account_id_hex,
-        const QString& winner_account_id_hex,
-        const QString& solution_le16_hex
-    ) override;
-    Q_INVOKABLE QString claim_pinata_private_owned_already_initialized(
-        const QString& pinata_account_id_hex,
-        const QString& winner_account_id_hex,
-        const QString& solution_le16_hex,
-        uint64_t winner_proof_index,
-        const QString& winner_proof_siblings_json
-    ) override;
-    Q_INVOKABLE QString claim_pinata_private_owned_not_initialized(
-        const QString& pinata_account_id_hex,
-        const QString& winner_account_id_hex,
-        const QString& solution_le16_hex
-    ) override;
+    // === Account Queries ===
+    std::string get_balance(const std::string& account_id_hex, bool is_public);
+    std::string get_account_public(const std::string& account_id_hex);
+    std::string get_account_private(const std::string& account_id_hex);
+    std::string get_public_account_key(const std::string& account_id_hex);
+    std::string get_private_account_keys(const std::string& account_id_hex);
 
-    // Account Management
-    Q_INVOKABLE QString create_account_public() override;
-    Q_INVOKABLE QString create_account_private() override;
-    Q_INVOKABLE QJsonArray list_accounts() override;
+    // === Account Encoding ===
+    std::string account_id_to_base58(const std::string& account_id_hex);
+    std::string account_id_from_base58(const std::string& base58_str);
 
-    // Account Queries
-    Q_INVOKABLE QString get_balance(const QString& account_id_hex, bool is_public) override;
-    Q_INVOKABLE QString get_balance(const QString& account_id_hex, const QString& is_public_str);
-    Q_INVOKABLE QString get_account_public(const QString& account_id_hex) override;
-    Q_INVOKABLE QString get_account_private(const QString& account_id_hex) override;
-    Q_INVOKABLE QString get_public_account_key(const QString& account_id_hex) override;
-    Q_INVOKABLE QString get_private_account_keys(const QString& account_id_hex) override;
+    // === Blockchain Synchronisation ===
+    int64_t sync_to_block(int64_t block_id);
+    int64_t get_last_synced_block();
+    int64_t get_current_block_height();
 
-    // Account Encoding
-    Q_INVOKABLE QString account_id_to_base58(const QString& account_id_hex) override;
-    Q_INVOKABLE QString account_id_from_base58(const QString& base58_str) override;
+    // === Pinata claiming ===
+    std::string claim_pinata(const std::string& pinata_account_id_hex, const std::string& winner_account_id_hex, const std::string& solution_le16_hex);
+    std::string claim_pinata_private_owned_already_initialized(const std::string& pinata_account_id_hex, const std::string& winner_account_id_hex, const std::string& solution_le16_hex, int64_t winner_proof_index, const std::string& winner_proof_siblings_json);
+    std::string claim_pinata_private_owned_not_initialized(const std::string& pinata_account_id_hex, const std::string& winner_account_id_hex, const std::string& solution_le16_hex);
 
-    // Blockchain Synchronisation
-    Q_INVOKABLE int sync_to_block(uint64_t block_id) override;
-    Q_INVOKABLE int sync_to_block(const QString& block_id_str) override;
-    Q_INVOKABLE int get_last_synced_block() override;
-    Q_INVOKABLE int get_current_block_height() override;
+    // === Operations ===
+    std::string transfer_public(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
+    std::string transfer_shielded(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex);
+    std::string transfer_deshielded(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
+    std::string transfer_private(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex);
+    std::string transfer_shielded_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
+    std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
+    std::string register_public_account(const std::string& account_id_hex);
+    std::string register_private_account(const std::string& account_id_hex);
 
-    // Operations
-    Q_INVOKABLE QString transfer_public(
-        const QString& from_hex,
-        const QString& to_hex,
-        const QString& amount_le16_hex
-    ) override;
-    Q_INVOKABLE QString transfer_shielded(
-        const QString& from_hex,
-        const QString& to_keys_json,
-        const QString& amount_le16_hex
-    ) override;
-    Q_INVOKABLE QString transfer_deshielded(
-        const QString& from_hex,
-        const QString& to_hex,
-        const QString& amount_le16_hex
-    ) override;
-    Q_INVOKABLE QString transfer_private(
-        const QString& from_hex,
-        const QString& to_keys_json,
-        const QString& amount_le16_hex
-    ) override;
-    Q_INVOKABLE QString transfer_shielded_owned(
-        const QString& from_hex,
-        const QString& to_hex,
-        const QString& amount_le16_hex
-    ) override;
-    Q_INVOKABLE QString transfer_private_owned(
-        const QString& from_hex,
-        const QString& to_hex,
-        const QString& amount_le16_hex
-    ) override;
-    Q_INVOKABLE QString register_public_account(const QString& account_id_hex) override;
-    Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
+    // === Configuration ===
+    std::string get_sequencer_addr();
 
-    // Wallet Lifecycle
-    Q_INVOKABLE int create_new(const QString& config_path, const QString& storage_path, const QString& password) override;
-    Q_INVOKABLE int open(const QString& config_path, const QString& storage_path) override;
-    Q_INVOKABLE int save() override;
-
-    // Configuration
-    Q_INVOKABLE QString get_sequencer_addr() override;
-
-signals:
-    void eventResponse(const QString& eventName, const QVariantList& data);
+private:
+    WalletHandle* walletHandle = nullptr;
 };
 
-#endif
+#endif // LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
