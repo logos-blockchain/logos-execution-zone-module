@@ -116,28 +116,28 @@ public:
     Q_INVOKABLE QString register_public_account(const QString& account_id_hex) override;
     Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
 
-    Q_INVOKABLE QJsonArray serialization_helper(const QJsonArray& input_data) override;
+    Q_INVOKABLE QList<QString> serialization_helper(const QList<QString>& input_data) override;
 
-    Q_INVOKABLE QJsonArray authenticated_transfer_elf() override;
-    Q_INVOKABLE QJsonArray token_elf() override;
-    Q_INVOKABLE QJsonArray amm_elf() override;
-    Q_INVOKABLE QJsonArray ata_elf() override;
+    Q_INVOKABLE QList<QString> authenticated_transfer_elf() override;
+    Q_INVOKABLE QList<QString> token_elf() override;
+    Q_INVOKABLE QList<QString> amm_elf() override;
+    Q_INVOKABLE QList<QString> ata_elf() override;
 
     Q_INVOKABLE QString send_generic_public_transaction(
         const QList<QString>& account_ids,
-        const QJsonArray& signing_requirements, 
-        const QJsonArray& instruction,
-        const QJsonArray& program_elf,
-        const QJsonArray& program_dependencies
+        const QList<QString>& signing_requirements, 
+        const QList<QString>& instruction,
+        const QList<QString>& program_elf,
+        const QList<QString>& program_dependencies
     ) override;
     Q_INVOKABLE QString send_generic_private_transaction(
         const QList<QString>& account_ids,
-        const QJsonArray& instruction,
-        const QJsonArray& program_elf,
-        const QJsonArray& program_dependencies
+        const QList<QString>& instruction,
+        const QList<QString>& program_elf,
+        const QList<QString>& program_dependencies
     ) override;
     Q_INVOKABLE QString send_program_deployment_transaction(
-        const QJsonArray& program_elf
+        const QList<QString>& program_elf
     ) override;
 
     // Wallet Lifecycle

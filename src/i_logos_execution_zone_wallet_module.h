@@ -88,28 +88,28 @@ public:
     virtual QString register_public_account(const QString& account_id_hex) = 0;
     virtual QString register_private_account(const QString& account_id_hex) = 0;
 
-    virtual QJsonArray serialization_helper(const QJsonArray& input_data) = 0;
+    virtual QList<QString> serialization_helper(const QList<QString>& input_data) = 0;
 
-    virtual QJsonArray authenticated_transfer_elf() = 0;
-    virtual QJsonArray token_elf() = 0;
-    virtual QJsonArray amm_elf() = 0;
-    virtual QJsonArray ata_elf() = 0;
+    virtual QList<QString> authenticated_transfer_elf() = 0;
+    virtual QList<QString> token_elf() = 0;
+    virtual QList<QString> amm_elf() = 0;
+    virtual QList<QString> ata_elf() = 0;
 
     virtual QString send_generic_public_transaction(
         const QList<QString>& account_ids,
-        const QJsonArray& signing_requirements, 
-        const QJsonArray& instruction,
-        const QJsonArray& program_elf,
-        const QJsonArray& program_dependencies
+        const QList<QString>& signing_requirements, 
+        const QList<QString>& instruction,
+        const QList<QString>& program_elf,
+        const QList<QString>& program_dependencies
     ) = 0;
     virtual QString send_generic_private_transaction(
         const QList<QString>& account_ids,
-        const QJsonArray& instruction,
-        const QJsonArray& program_elf,
-        const QJsonArray& program_dependencies
+        const QList<QString>& instruction,
+        const QList<QString>& program_elf,
+        const QList<QString>& program_dependencies
     ) = 0;
     virtual QString send_program_deployment_transaction(
-        const QJsonArray& program_elf
+        const QList<QString>& program_elf
     ) = 0;
 
     // Wallet Lifecycle

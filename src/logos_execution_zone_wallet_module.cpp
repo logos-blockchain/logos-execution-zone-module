@@ -753,74 +753,78 @@ QString LogosExecutionZoneWalletModule::register_private_account(const QString& 
     return resultJson;
 }
 
-QJsonArray LogosExecutionZoneWalletModule::token_elf() {
+QList<QString> LogosExecutionZoneWalletModule::token_elf() {
     FfiProgram ffi_program {};
     WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
     if (error != SUCCESS) {
         qWarning() << "token_elf: wallet FFI error " << error;
-        return QJsonArray();
+        return QList<QString>();
     }
 
-    QJsonArray result;
+    QList<QString> result;
+    result.reserve(ffi_program.elf_size);
     for (size_t i = 0; i < ffi_program.elf_size; ++i) {
-        result.append(static_cast<int>(ffi_program.elf_data[i]));
+        result.append(QString::number(static_cast<unsigned char>(ffi_program.elf_data[i])));
     }
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
 }
 
-QJsonArray LogosExecutionZoneWalletModule::amm_elf() {
+QList<QString> LogosExecutionZoneWalletModule::amm_elf() {
     FfiProgram ffi_program {};
     WalletFfiError error = wallet_ffi_amm_elf(&ffi_program);
     if (error != SUCCESS) {
         qWarning() << "amm_elf: wallet FFI error " << error;
-        return QJsonArray();
+        return QList<QString>();
     }
 
-    QJsonArray result;
+    QList<QString> result;
+    result.reserve(ffi_program.elf_size);
     for (size_t i = 0; i < ffi_program.elf_size; ++i) {
-        result.append(static_cast<int>(ffi_program.elf_data[i]));
+        result.append(QString::number(static_cast<unsigned char>(ffi_program.elf_data[i])));
     }
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
 }
 
-QJsonArray LogosExecutionZoneWalletModule::ata_elf() {
+QList<QString> LogosExecutionZoneWalletModule::ata_elf() {
     FfiProgram ffi_program {};
     WalletFfiError error = wallet_ffi_ata_elf(&ffi_program);
     if (error != SUCCESS) {
         qWarning() << "ata_elf: wallet FFI error " << error;
-        return QJsonArray();
+        return QList<QString>();
     }
 
-    QJsonArray result;
+    QList<QString> result;
+    result.reserve(ffi_program.elf_size);
     for (size_t i = 0; i < ffi_program.elf_size; ++i) {
-        result.append(static_cast<int>(ffi_program.elf_data[i]));
+        result.append(QString::number(static_cast<unsigned char>(ffi_program.elf_data[i])));
     }
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
 }
 
-QJsonArray LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
+QList<QString> LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
     FfiProgram ffi_program {};
     WalletFfiError error = wallet_ffi_transfer_elf(&ffi_program);
     if (error != SUCCESS) {
         qWarning() << "authenticated_transfer_elf: wallet FFI error " << error;
-        return QJsonArray();
+        return QList<QString>();
     }
 
-    QJsonArray result;
+    QList<QString> result;
+    result.reserve(ffi_program.elf_size);
     for (size_t i = 0; i < ffi_program.elf_size; ++i) {
-        result.append(static_cast<int>(ffi_program.elf_data[i]));
+        result.append(QString::number(static_cast<unsigned char>(ffi_program.elf_data[i])));
     }
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
 }
 
-QJsonArray LogosExecutionZoneWalletModule::serialization_helper(const QJsonArray& input_data) {
+QList<QString> LogosExecutionZoneWalletModule::serialization_helper(const QList<QString>& input_data) {
     QList<uint8_t> input_list;
     input_list.reserve(input_data.size());
-    for (const QJsonValue& val : input_data) {
+    for (const QString& val : input_data) {
         input_list.append(static_cast<uint8_t>(val.toInt()));
     }
 
@@ -829,12 +833,13 @@ QJsonArray LogosExecutionZoneWalletModule::serialization_helper(const QJsonArray
     FfiInstructionWords raw_words = wallet_ffi_serialization_helper(input_instruction_data, input_instruction_data_size);
     if (raw_words.error != SUCCESS) {
         qWarning() << "serialization_helper: wallet FFI error" << raw_words.error;
-        return QJsonArray{};
+        return QList<QString>();
     }
 
-    QJsonArray result;
+    QList<QString> result;
+    result.reserve(raw_words.instruction_words_size);
     for (size_t i = 0; i < raw_words.instruction_words_size; ++i) {
-        result.append(static_cast<qint64>(raw_words.instruction_words[i]));
+        result.append(QString::number(raw_words.instruction_words[i]));
     }
     wallet_ffi_free_instruction_words(&raw_words);
     return result;
@@ -842,15 +847,15 @@ QJsonArray LogosExecutionZoneWalletModule::serialization_helper(const QJsonArray
 
 QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
         const QList<QString>& account_ids,
-        const QJsonArray& signing_requirements, 
-        const QJsonArray& instruction,
-        const QJsonArray& program_elf,
-        const QJsonArray& program_dependencies
+        const QList<QString>& signing_requirements, 
+        const QList<QString>& instruction,
+        const QList<QString>& program_elf,
+        const QList<QString>& program_dependencies
 ) {
     QList<bool> signing_requirements_list;
     signing_requirements_list.reserve(signing_requirements.size());
-    for (const QJsonValue& val : signing_requirements) {
-        signing_requirements_list.append(val.toBool());
+    for (const QString& val : signing_requirements) {
+        signing_requirements_list.append(val == "true");
     }
 
     QList<FfiAccountIdentity> identities_resolved;
@@ -877,9 +882,9 @@ QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
     QList<uint32_t> instruction_list;
-    instruction_list.reserve(instruction.size());
-    for (const QJsonValue& val : instruction) {
-        instruction_list.append(static_cast<uint32_t>(val.toInt()));
+    instruction_list.reserve(instruction.size());   
+    for (const QString& val : instruction) {
+        instruction_list.append(val.toULong());
     }
 
     const uint32_t* input_instruction_data = instruction_list.constData();
@@ -889,8 +894,8 @@ QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
 
     QList<uint8_t> program_elf_list;
     program_elf_list.reserve(program_elf.size());
-    for (const QJsonValue& val : program_elf) {
-        program_elf_list.append(static_cast<uint8_t>(val.toInt()));
+    for (const QString& val : program_elf) {
+        program_elf_list.append(static_cast<uint8_t>(val.toUInt()));
     }
 
     const uint8_t *program_elf_data = program_elf_list.constData();
@@ -901,12 +906,12 @@ QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
 
     QList<QList<uint8_t>> program_dependencies_list;
     program_dependencies_list.reserve(program_dependencies.size());
-    for (const QJsonValue& outer : program_dependencies) {
+    for (const QString& outer : program_dependencies) {
         QList<uint8_t> inner;
-        const QJsonArray inner_arr = outer.toArray();
-        inner.reserve(inner_arr.size());
-        for (const QJsonValue& val : inner_arr) {
-            inner.append(static_cast<uint8_t>(val.toInt()));
+        const QStringList parts = outer.split(' ', Qt::SkipEmptyParts);
+        inner.reserve(parts.size());
+        for (const QString& val : parts) {
+            inner.append(static_cast<uint8_t>(val.toUInt()));
         }
         program_dependencies_list.append(inner);
     }
@@ -961,9 +966,9 @@ QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
 
 QString LogosExecutionZoneWalletModule::send_generic_private_transaction(
         const QList<QString>& account_ids,
-        const QJsonArray& instruction,
-        const QJsonArray& program_elf,
-        const QJsonArray& program_dependencies
+        const QList<QString>& instruction,
+        const QList<QString>& program_elf,
+        const QList<QString>& program_dependencies
 ) {
     QList<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
@@ -989,9 +994,9 @@ QString LogosExecutionZoneWalletModule::send_generic_private_transaction(
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
     QList<uint32_t> instruction_list;
-    instruction_list.reserve(instruction.size());
-    for (const QJsonValue& val : instruction) {
-        instruction_list.append(static_cast<uint32_t>(val.toInt()));
+    instruction_list.reserve(instruction.size());   
+    for (const QString& val : instruction) {
+        instruction_list.append(val.toULong());
     }
 
     const uint32_t* input_instruction_data = instruction_list.constData();
@@ -1001,8 +1006,8 @@ QString LogosExecutionZoneWalletModule::send_generic_private_transaction(
 
     QList<uint8_t> program_elf_list;
     program_elf_list.reserve(program_elf.size());
-    for (const QJsonValue& val : program_elf) {
-        program_elf_list.append(static_cast<uint8_t>(val.toInt()));
+    for (const QString& val : program_elf) {
+        program_elf_list.append(static_cast<uint8_t>(val.toUInt()));
     }
 
     const uint8_t *program_elf_data = program_elf_list.constData();
@@ -1013,12 +1018,12 @@ QString LogosExecutionZoneWalletModule::send_generic_private_transaction(
 
     QList<QList<uint8_t>> program_dependencies_list;
     program_dependencies_list.reserve(program_dependencies.size());
-    for (const QJsonValue& outer : program_dependencies) {
+    for (const QString& outer : program_dependencies) {
         QList<uint8_t> inner;
-        const QJsonArray inner_arr = outer.toArray();
-        inner.reserve(inner_arr.size());
-        for (const QJsonValue& val : inner_arr) {
-            inner.append(static_cast<uint8_t>(val.toInt()));
+        const QStringList parts = outer.split(' ', Qt::SkipEmptyParts);
+        inner.reserve(parts.size());
+        for (const QString& val : parts) {
+            inner.append(static_cast<uint8_t>(val.toUInt()));
         }
         program_dependencies_list.append(inner);
     }
@@ -1072,14 +1077,14 @@ QString LogosExecutionZoneWalletModule::send_generic_private_transaction(
 }
 
 QString LogosExecutionZoneWalletModule::send_program_deployment_transaction(
-        const QJsonArray& program_elf
+        const QList<QString>& program_elf
 ) {
     FfiTransactionResult result {};
 
     QList<uint8_t> program_elf_list;
     program_elf_list.reserve(program_elf.size());
-    for (const QJsonValue& val : program_elf) {
-        program_elf_list.append(static_cast<uint8_t>(val.toInt()));
+    for (const QString& val : program_elf) {
+        program_elf_list.append(static_cast<uint8_t>(val.toUInt()));
     }
 
     const uint8_t *program_elf_data = program_elf_list.constData();
