@@ -116,8 +116,6 @@ public:
     Q_INVOKABLE QString register_public_account(const QString& account_id_hex) override;
     Q_INVOKABLE QString register_private_account(const QString& account_id_hex) override;
 
-    Q_INVOKABLE QList<QString> serialization_helper(const QList<QString>& input_data) override;
-
     Q_INVOKABLE QList<QString> authenticated_transfer_elf() override;
     Q_INVOKABLE QList<QString> token_elf() override;
     Q_INVOKABLE QList<QString> amm_elf() override;

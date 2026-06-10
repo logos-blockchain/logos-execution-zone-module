@@ -88,8 +88,6 @@ public:
     virtual QString register_public_account(const QString& account_id_hex) = 0;
     virtual QString register_private_account(const QString& account_id_hex) = 0;
 
-    virtual QList<QString> serialization_helper(const QList<QString>& input_data) = 0;
-
     virtual QList<QString> authenticated_transfer_elf() = 0;
     virtual QList<QString> token_elf() = 0;
     virtual QList<QString> amm_elf() = 0;

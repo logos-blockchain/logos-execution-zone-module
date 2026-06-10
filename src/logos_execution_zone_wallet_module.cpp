@@ -821,30 +821,6 @@ QList<QString> LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
     return result;
 }
 
-QList<QString> LogosExecutionZoneWalletModule::serialization_helper(const QList<QString>& input_data) {
-    QList<uint8_t> input_list;
-    input_list.reserve(input_data.size());
-    for (const QString& val : input_data) {
-        input_list.append(static_cast<uint8_t>(val.toInt()));
-    }
-
-    const uint8_t* input_instruction_data = input_list.constData();
-    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(input_list.size());
-    FfiInstructionWords raw_words = wallet_ffi_serialization_helper(input_instruction_data, input_instruction_data_size);
-    if (raw_words.error != SUCCESS) {
-        qWarning() << "serialization_helper: wallet FFI error" << raw_words.error;
-        return QList<QString>();
-    }
-
-    QList<QString> result;
-    result.reserve(raw_words.instruction_words_size);
-    for (size_t i = 0; i < raw_words.instruction_words_size; ++i) {
-        result.append(QString::number(raw_words.instruction_words[i]));
-    }
-    wallet_ffi_free_instruction_words(&raw_words);
-    return result;
-}
-
 QString LogosExecutionZoneWalletModule::send_generic_public_transaction(
         const QList<QString>& account_ids,
         const QList<QString>& signing_requirements, 
