@@ -8,20 +8,20 @@
 #include <logos_test.h>
 #include "logos_execution_zone_wallet_module.h"
 
-#include <QString>
+#include <string>
 
 // account_id_to_base58 and account_id_from_base58 are pure encoding helpers that
 // do not require an open wallet, so they can be exercised against the real lib.
 LOGOS_TEST(integration_account_id_base58_round_trip) {
     LogosExecutionZoneWalletModule module;
 
-    const QString idHex = QString(64, 'a');
+    const std::string idHex = std::string(64, 'a');
 
-    const QString base58 = module.account_id_to_base58(idHex);
-    LOGOS_ASSERT_FALSE(base58.isEmpty());
+    const std::string base58 = module.account_id_to_base58(idHex);
+    LOGOS_ASSERT_FALSE(base58.empty());
 
-    const QString decodedHex = module.account_id_from_base58(base58);
-    LOGOS_ASSERT_FALSE(decodedHex.isEmpty());
+    const std::string decodedHex = module.account_id_from_base58(base58);
+    LOGOS_ASSERT_FALSE(decodedHex.empty());
     LOGOS_ASSERT_EQ(decodedHex, idHex);
 }
 
@@ -29,5 +29,5 @@ LOGOS_TEST(integration_account_id_from_base58_rejects_garbage) {
     LogosExecutionZoneWalletModule module;
 
     // Clearly invalid base58 input should not decode to a valid id.
-    LOGOS_ASSERT_TRUE(module.account_id_from_base58(QStringLiteral("!!!not-base58!!!")).isEmpty());
+    LOGOS_ASSERT_TRUE(module.account_id_from_base58("!!!not-base58!!!").empty());
 }

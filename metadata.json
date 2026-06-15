@@ -5,6 +5,11 @@
   "author": "Logos Blockchain Team",
   "type": "core",
   "category": "blockchain",
+  "interface": "universal",
+  "codegen": {
+    "impl_header": "src/logos_execution_zone_wallet_module.h",
+    "impl_class": "LogosExecutionZoneWalletModule"
+  },
   "main": "logos_execution_zone_plugin",
   "dependencies": [],
   "capabilities": [],
@@ -13,7 +18,7 @@
   "nix": {
     "packages": {
       "build": [],
-      "runtime": []
+      "runtime": ["nlohmann_json"]
     },
     "external_libraries": [
       {

@@ -16,7 +16,6 @@ logos_module(
     SOURCES
         src/logos_execution_zone_wallet_module.h
         src/logos_execution_zone_wallet_module.cpp
-        src/i_logos_execution_zone_wallet_module.h
     EXTERNAL_LIBS
         wallet_ffi
 )
