@@ -583,9 +583,11 @@ QString LogosExecutionZoneWalletModule::transfer_shielded(
 
     // Bandaid, I am not sure, how exactly identifiers should be used.
     FfiU128 identifier {};
+    // Analogous, keycart not yet supported
+    const char *key_path = nullptr;
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &identifier, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &identifier, &amount, key_path, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         qWarning() << "transfer_shielded: wallet FFI error" << error;
@@ -680,8 +682,11 @@ QString LogosExecutionZoneWalletModule::transfer_shielded_owned(
         return transferResultToJson(nullptr, QStringLiteral("transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)"));
     }
 
+    // Keycart not yet supported
+    const char *key_path = nullptr;
+
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, key_path, &result);
     if (error != SUCCESS) {
         qWarning() << "transfer_shielded_owned: wallet FFI error" << error;
         return transferResultToJson(nullptr, QStringLiteral("transfer_shielded_owned: wallet FFI error ") + QString::number(error));
