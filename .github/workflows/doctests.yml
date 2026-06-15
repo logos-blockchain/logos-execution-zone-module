@@ -64,10 +64,10 @@ jobs:
       # of logos-execution-zone-module instead of the latest published flake.
       #
       # Fork PRs are the exception: their head commit lives in the fork, not in
-      # logos-co/logos-execution-zone-module, so nix could not fetch
-      # `github:logos-co/logos-execution-zone-module/<sha>`. We blank the SHA for
-      # forks (--release-for repo= → pins that repo to latest), so the doc-test
-      # still runs for fork PRs, just against master.
+      # logos-blockchain/logos-execution-zone-module, so nix could not fetch
+      # `github:logos-blockchain/logos-execution-zone-module/<sha>`. We blank the
+      # SHA for forks (--release-for repo= → pins that repo to latest), so the
+      # doc-test still runs for fork PRs, just against master.
       - name: Resolve commit under test
         id: commit
         shell: bash
@@ -86,9 +86,9 @@ jobs:
       #
       # --release-for pins the {release} placeholder for logos-execution-zone-module
       # to the commit under test, so
-      # `github:logos-co/logos-execution-zone-module{release}` in the spec becomes
-      # `.../<sha>` — the doc-test packages and exercises this PR/push rather than
-      # master. Every other repo URL still resolves to latest.
+      # `github:logos-blockchain/logos-execution-zone-module{release}` in the spec
+      # becomes `.../<sha>` — the doc-test packages and exercises this PR/push
+      # rather than master. Every other repo URL still resolves to latest.
       - name: Run execution-zone-module runtime doc-test
         run: |
           # --continue-on-fail so the run walks every step and the published

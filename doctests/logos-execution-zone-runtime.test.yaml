@@ -107,10 +107,10 @@ sections:
           Build the `#lgx` output and link it as `./lez-lgx`. (This compiles the
           module and the `wallet_ffi` library it depends on through Nix, so the
           first build is slow.)
-        run: "nix build 'github:logos-co/logos-execution-zone-module{release}#lgx' -o lez-lgx"
+        run: "nix build 'github:logos-blockchain/logos-execution-zone-module{release}#lgx' -o lez-lgx"
         code_block: |
           # From inside the clone this is simply: nix build '.#lgx'
-          nix build 'github:logos-co/logos-execution-zone-module{release}#lgx' -o lez-lgx
+          nix build 'github:logos-blockchain/logos-execution-zone-module{release}#lgx' -o lez-lgx
         post_text: "The `.lgx` package is now under `./lez-lgx/`:"
         extra_run:
           run: "ls lez-lgx/*.lgx"
