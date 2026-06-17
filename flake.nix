@@ -4,7 +4,7 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/lssa?rev=cf3639d8252040d13b3d4e933feb19b42c76e14a"; # v0.1.2
+    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?rev=7d294ca07127ab49c0982bea9a5c617b53b196ce"; # branch schouhy/update-flake
   };
 
   outputs = inputs@{ logos-module-builder, ... }:

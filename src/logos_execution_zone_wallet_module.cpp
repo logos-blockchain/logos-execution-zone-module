@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -53,6 +54,7 @@ constexpr auto Nonce = "nonce";
 constexpr auto Data = "data";
 constexpr auto NullifierPublicKey = "nullifier_public_key";
 constexpr auto ViewingPublicKey = "viewing_public_key";
+constexpr auto Identifier = "identifier";
 constexpr auto AccountId = "account_id";
 constexpr auto IsPublic = "is_public";
 } // namespace JsonKeys
@@ -156,6 +158,35 @@ std::string ffiPrivateAccountKeysToJson(const FfiPrivateAccountKeys& keys) {
         obj[JsonKeys::ViewingPublicKey] = "";
     }
     return obj.dump();
+}
+
+// Nothing in this codebase currently emits an "identifier" field in to_keys_json — NPK/VPK
+// identify a key group, not one specific account in it, so get_private_account_keys never
+// attaches one. Kept for forward compatibility (e.g. a hand-crafted or future payload that
+// targets one specific account within a group) and to make the fallback below explicit.
+bool jsonExtractIdentifier(const std::string& json, FfiU128* out_identifier) {
+    nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
+    if (doc.is_discarded() || !doc.is_object())
+        return false;
+    if (!doc.contains(JsonKeys::Identifier) || !doc[JsonKeys::Identifier].is_string())
+        return false;
+    std::vector<uint8_t> buffer;
+    if (!hexToBytes(doc[JsonKeys::Identifier].get<std::string>(), buffer, 16))
+        return false;
+    memcpy(out_identifier->data, buffer.data(), 16);
+    return true;
+}
+
+// A foreign recipient's identifier isn't known to the sender; the recipient's wallet
+// recovers it from the encrypted transfer payload the next time it runs sync-private.
+FfiU128 randomFfiU128() {
+    static std::mt19937_64 rng(std::random_device{}());
+    FfiU128 value{};
+    for (int i = 0; i < 16; i += 8) {
+        uint64_t chunk = rng();
+        memcpy(value.data + i, &chunk, sizeof(chunk));
+    }
+    return value;
 }
 
 bool jsonToFfiPrivateAccountKeys(const std::string& json, FfiPrivateAccountKeys* output_keys) {
@@ -348,6 +379,11 @@ std::string LogosExecutionZoneWalletModule::get_private_account_keys(const std::
         fprintf(stderr, "get_private_account_keys: wallet FFI error %d\n", error);
         return {};
     }
+
+    // NPK/VPK identify the key group a private account belongs to, not one specific
+    // account within it — there's no real identifier to attach here. (wallet_ffi_resolve_private_account
+    // can't supply one either: for a regular owned account it returns AccountIdentity::PrivateOwned,
+    // which carries no identifier and defaults to zero — not a real value.)
     std::string result = ffiPrivateAccountKeysToJson(keys);
     wallet_ffi_free_private_account_keys(&keys);
     return result;
@@ -573,8 +609,14 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded(
         return transferResultToJson(nullptr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
+    // to_keys_json never carries an identifier in this codebase (NPK/VPK name a key group,
+    // not one account in it) — pick a random one, which the recipient's wallet will recover
+    // from the encrypted transfer payload on its next sync-private. See jsonExtractIdentifier.
+    FfiU128 toIdentifier{};
+    if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
+        toIdentifier = randomFfiU128();
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, nullptr, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_shielded: wallet FFI error %d\n", error);
@@ -637,8 +679,13 @@ std::string LogosExecutionZoneWalletModule::transfer_private(
         return transferResultToJson(nullptr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
+    // See transfer_shielded above: to_keys_json never carries an identifier, so always pick
+    // a random one for the recipient's wallet to recover via sync-private.
+    FfiU128 toIdentifier{};
+    if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
+        toIdentifier = randomFfiU128();
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_private: wallet FFI error %d\n", error);
@@ -667,7 +714,7 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded_owned(
     }
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, nullptr, &result);
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_shielded_owned: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded_owned: wallet FFI error " + std::to_string(error));
