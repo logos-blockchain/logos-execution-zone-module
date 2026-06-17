@@ -14,8 +14,15 @@ extern "C" {
 #include <wallet_ffi.h>
 }
 
+#include "mock_wallet_ffi_capture.h"
+
 #include <cstdlib>
 #include <cstring>
+
+namespace MockWalletFfiCapture {
+uint8_t lastTransferShieldedIdentifier[16] = {0};
+uint8_t lastTransferPrivateIdentifier[16] = {0};
+} // namespace MockWalletFfiCapture
 
 namespace {
 
@@ -342,11 +349,14 @@ WalletFfiError wallet_ffi_transfer_public(
 }
 
 WalletFfiError wallet_ffi_transfer_shielded(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128*,
-    const uint8_t (*)[16], 
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128* identifier,
+    const uint8_t (*)[16],
     const char*,
     FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_shielded");
+    if (identifier) {
+        memcpy(MockWalletFfiCapture::lastTransferShieldedIdentifier, identifier->data, 16);
+    }
     return fillTransferResult("wallet_ffi_transfer_shielded", out_result);
 }
 
@@ -357,14 +367,17 @@ WalletFfiError wallet_ffi_transfer_deshielded(
 }
 
 WalletFfiError wallet_ffi_transfer_private(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128*,
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128* identifier,
     const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_private");
+    if (identifier) {
+        memcpy(MockWalletFfiCapture::lastTransferPrivateIdentifier, identifier->data, 16);
+    }
     return fillTransferResult("wallet_ffi_transfer_private", out_result);
 }
 
 WalletFfiError wallet_ffi_transfer_shielded_owned(
-    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], 
+    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16],
     const char *,
     FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_shielded_owned");
@@ -475,6 +488,41 @@ WalletFfiError wallet_ffi_program_deployment(WalletHandle *handle, const uint8_t
 FfiTransactionResult *out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_program_deployment");
     return fillTransactionResult("wallet_ffi_program_deployment", out_result);
+}
+
+// === Bridge (L1 Bedrock <-> L2) ===
+
+WalletFfiError wallet_ffi_bridge_withdraw(
+    WalletHandle*, const FfiBytes32*, uint64_t, const FfiBytes32*, FfiTransferResult* out_result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_bridge_withdraw");
+    return fillTransferResult("wallet_ffi_bridge_withdraw", out_result);
+}
+
+// === Vault claiming ===
+
+WalletFfiError wallet_ffi_get_vault_balance(WalletHandle*, const FfiBytes32*, uint8_t (*out_balance)[16]) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_get_vault_balance");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_vault_balance");
+    if (err == 0 && out_balance) {
+        const uint64_t value = static_cast<uint64_t>(LOGOS_CMOCK_RETURN(int, "get_vault_balance_value"));
+        memset(*out_balance, 0, 16);
+        for (int i = 0; i < 8; ++i) {
+            (*out_balance)[i] = static_cast<uint8_t>((value >> (i * 8)) & 0xFF);
+        }
+    }
+    return static_cast<WalletFfiError>(err);
+}
+
+WalletFfiError wallet_ffi_vault_claim(
+    WalletHandle*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_vault_claim");
+    return fillTransferResult("wallet_ffi_vault_claim", out_result);
+}
+
+WalletFfiError wallet_ffi_vault_claim_private(
+    WalletHandle*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_vault_claim_private");
+    return fillTransferResult("wallet_ffi_vault_claim_private", out_result);
 }
 
 // === Configuration ===

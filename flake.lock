@@ -1585,13 +1585,13 @@
         "lastModified": 1782310268,
         "narHash": "sha256-tIIIO+V+w/C/KLtKnLIv8O8/GoJ4PzgJSWrlQCXJ2P4=",
         "owner": "logos-blockchain",
-        "repo": "lssa",
+        "repo": "logos-execution-zone",
         "rev": "fb8cbac40e0bda4f152415ff4f181cdc6bca6d4a",
         "type": "github"
       },
       "original": {
         "owner": "logos-blockchain",
-        "repo": "lssa",
+        "repo": "logos-execution-zone",
         "rev": "fb8cbac40e0bda4f152415ff4f181cdc6bca6d4a",
         "type": "github"
       }
