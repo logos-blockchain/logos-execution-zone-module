@@ -4,7 +4,7 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/lssa?rev=cf3639d8252040d13b3d4e933feb19b42c76e14a"; # v0.1.2
+    logos-execution-zone.url = "github:logos-blockchain/lssa?rev=62d9ba10f8f86db3a1f04b329a1bd9d5b893bf60"; # lez-core-v0.1.0
   };
 
   outputs = inputs@{ logos-module-builder, ... }:
