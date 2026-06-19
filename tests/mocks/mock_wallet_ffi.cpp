@@ -275,7 +275,10 @@ WalletFfiError wallet_ffi_transfer_public(
 }
 
 WalletFfiError wallet_ffi_transfer_shielded(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const uint8_t (*)[16], FfiTransferResult* out_result) {
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128*,
+    const uint8_t (*)[16], 
+    const char*,
+    FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_shielded");
     return fillTransferResult("wallet_ffi_transfer_shielded", out_result);
 }
@@ -287,13 +290,16 @@ WalletFfiError wallet_ffi_transfer_deshielded(
 }
 
 WalletFfiError wallet_ffi_transfer_private(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const uint8_t (*)[16], FfiTransferResult* out_result) {
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128*,
+    const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_private");
     return fillTransferResult("wallet_ffi_transfer_private", out_result);
 }
 
 WalletFfiError wallet_ffi_transfer_shielded_owned(
-    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
+    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], 
+    const char *,
+    FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_shielded_owned");
     return fillTransferResult("wallet_ffi_transfer_shielded_owned", out_result);
 }

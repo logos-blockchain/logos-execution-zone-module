@@ -75,6 +75,87 @@ typedef struct FfiTransferResult {
     char* tx_hash;
 } FfiTransferResult;
 
+/**
+ * Enumeration to represent kinds of `FfiAccountIdentity`.
+ */
+typedef enum FfiAccountIdentityKind {
+  PUBLIC = 0,
+  PUBLIC_NO_SIGN = 1,
+  PUBLIC_KEYCARD = 2,
+  PRIVATE_OWNED = 3,
+  PRIVATE_FOREIGN = 4,
+  PRIVATE_PDA_OWNED = 5,
+  PRIVATE_PDA_FOREIGN = 6,
+  PRIVATE_SHARED = 7,
+  PRIVATE_PDA_SHARED = 8,
+} FfiAccountIdentityKind;
+
+/**
+ * U128 - 16 bytes little endian.
+ */
+typedef struct FfiU128 {
+  uint8_t data[16];
+} FfiU128;
+
+typedef struct FfiInstructionWords {
+  uint32_t *instruction_words;
+  uintptr_t instruction_words_size;
+  enum WalletFfiError error;
+} FfiInstructionWords;
+
+/**
+ * Struct representing an account identity, given to `AccountManager` at intialization.
+ */
+typedef struct FfiAccountIdentity {
+  enum FfiAccountIdentityKind kind;
+  struct FfiBytes32 account_id;
+  /**
+   * C-compatible string.
+   */
+  char *key_path;
+  struct FfiBytes32 nullifier_secret_key;
+  struct FfiBytes32 nullifier_public_key;
+  const uint8_t *viewing_public_key;
+  uintptr_t viewing_public_key_len;
+  struct FfiU128 identifier;
+} FfiAccountIdentity;
+
+/**
+ * Intended to be created manually.
+ */
+typedef struct FfiProgram {
+  const uint8_t *elf_data;
+  uintptr_t elf_size;
+} FfiProgram;
+
+/**
+ * Intended to be created manually.
+ */
+typedef struct FfiProgramWithDependencies {
+  struct FfiProgram program;
+  const struct FfiProgram *deps;
+  uintptr_t deps_size;
+} FfiProgramWithDependencies;
+
+/**
+ * Result of a generic transaction operation.
+ */
+typedef struct FfiTransactionResult {
+  /**
+   * Transaction hash (null-terminated string, or null on failure).
+   */
+  char *tx_hash;
+  /**
+   * Whether the transaction succeeded.
+   */
+  bool success;
+  const struct FfiBytes32 *secrets_data;
+  /**
+   * Public transactions have 0 secrets.
+   */
+  uintptr_t secrets_size;
+} FfiTransactionResult;
+
 // === Lifecycle ===
 
 WalletHandle* wallet_ffi_create_new(const char* config_path, const char* storage_path, const char* password);
@@ -144,16 +225,22 @@ WalletFfiError wallet_ffi_transfer_public(
     const uint8_t (*amount)[16], FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_shielded(
     WalletHandle* handle, const FfiBytes32* from, const FfiPrivateAccountKeys* to_keys,
-    const uint8_t (*amount)[16], FfiTransferResult* out_result);
+    const FfiU128 *to_identifier,
+    const uint8_t (*amount)[16], 
+    const char *key_path,
+    FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_deshielded(
     WalletHandle* handle, const FfiBytes32* from, const FfiBytes32* to,
     const uint8_t (*amount)[16], FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_private(
     WalletHandle* handle, const FfiBytes32* from, const FfiPrivateAccountKeys* to_keys,
+    const FfiU128 *to_identifier,
     const uint8_t (*amount)[16], FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_shielded_owned(
     WalletHandle* handle, const FfiBytes32* from, const FfiBytes32* to,
-    const uint8_t (*amount)[16], FfiTransferResult* out_result);
+    const uint8_t (*amount)[16], 
+    const char *key_path,
+    FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_private_owned(
     WalletHandle* handle, const FfiBytes32* from, const FfiBytes32* to,
     const uint8_t (*amount)[16], FfiTransferResult* out_result);
@@ -161,7 +248,43 @@ WalletFfiError wallet_ffi_transfer_private_owned(
 WalletFfiError wallet_ffi_register_public_account(WalletHandle* handle, const FfiBytes32* account_id, FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_register_private_account(WalletHandle* handle, const FfiBytes32* account_id, FfiTransferResult* out_result);
 
+WalletFfiError wallet_ffi_transfer_elf(FfiProgram *ffi_program);
+WalletFfiError wallet_ffi_token_elf(FfiProgram *ffi_program);
+WalletFfiError wallet_ffi_ata_elf(FfiProgram *ffi_program);
+WalletFfiError wallet_ffi_amm_elf(FfiProgram *ffi_program);
+
+WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle,
+                                                               const FfiAccountIdentity *account_identities,
+                                                               uintptr_t account_identities_size,
+                                                               const uint32_t *instruction_words,
+                                                               uintptr_t instruction_words_size,
+                                                               const FfiProgramWithDependencies *program_with_dependencies,
+                                                               FfiTransactionResult *out_result);
+
+WalletFfiError wallet_ffi_send_generic_private_transaction(WalletHandle *handle,
+                                                               const FfiAccountIdentity *account_identities,
+                                                               uintptr_t account_identities_size,
+                                                               const uint32_t *instruction_words,
+                                                               uintptr_t instruction_words_size,
+                                                               const FfiProgramWithDependencies *program_with_dependencies,
+                                                               FfiTransactionResult *out_result);    
+
+WalletFfiError wallet_ffi_program_deployment(WalletHandle *handle,
+                                                  const uint8_t *elf_data,
+                                                  uintptr_t elf_size,
+                                                  FfiTransactionResult *out_result);
+
+WalletFfiError wallet_ffi_resolve_public_account(FfiBytes32 account_id,
+                                                      bool needs_sign,
+                                                      FfiAccountIdentity *out_account_identity);
+WalletFfiError wallet_ffi_resolve_private_account(WalletHandle *handle,
+                                                       FfiBytes32 account_id,
+                                                       FfiAccountIdentity *out_account_identity);
+void wallet_ffi_free_instruction_words(FfiInstructionWords *words);
+void wallet_ffi_free_account_identity(FfiAccountIdentity *account_identity);
 void wallet_ffi_free_transfer_result(FfiTransferResult* result);
+void wallet_ffi_free_transaction_result(FfiTransactionResult *result);
+void wallet_ffi_free_ffi_program(FfiProgram *ffi_program);
 
 // === Configuration ===
 
