@@ -1,5 +1,6 @@
 {
   "name": "logos_execution_zone",
+  "display_name": "LEZ Module",
   "version": "1.0.0",
   "description": "Logos Execution Zone Module for Logos Core",
   "author": "Logos Blockchain Team",
