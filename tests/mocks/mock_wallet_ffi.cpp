@@ -134,6 +134,15 @@ WalletFfiError wallet_ffi_get_balance(WalletHandle*, const FfiBytes32*, bool, ui
     return static_cast<WalletFfiError>(err);
 }
 
+static WalletFfiError fillProgram(const char* key, FfiProgram *ffi_program) {
+    const int err = LogosCMockStore::instance().getReturn<int>(key);
+    if (err == 0 && ffi_program) {
+        memset(const_cast<uint8_t*>(ffi_program->elf_data), 0xAA, 100);
+        ffi_program->elf_size = 100;
+    }
+    return static_cast<WalletFfiError>(err);
+}
+
 static WalletFfiError fillAccount(const char* key, FfiAccount* out_account) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (err == 0 && out_account) {
@@ -144,6 +153,53 @@ static WalletFfiError fillAccount(const char* key, FfiAccount* out_account) {
         out_account->nonce.data[0] = 0x01;
         out_account->data = nullptr;
         out_account->data_len = 0;
+    }
+    return static_cast<WalletFfiError>(err);
+}
+
+static WalletFfiError fillPublicAccountIdentity(const char* key, FfiAccountIdentity *out_account_identity) {
+    const int err = LogosCMockStore::instance().getReturn<int>(key);
+    if (err == 0 && out_account_identity) {
+        out_account_identity->kind = FfiAccountIdentityKind::PUBLIC;
+        memset(out_account_identity->account_id.data, 0xAA, sizeof(out_account_identity->account_id));
+        out_account_identity->key_path = nullptr;
+        memset(out_account_identity->nullifier_secret_key.data, 0x00, sizeof(out_account_identity->nullifier_secret_key));
+        memset(out_account_identity->nullifier_public_key.data, 0x00, sizeof(out_account_identity->nullifier_public_key));
+        out_account_identity->viewing_public_key = nullptr;
+        out_account_identity->viewing_public_key_len = 0;
+        memset(out_account_identity->identifier.data, 0x01, sizeof(out_account_identity->identifier));
+    }
+    return static_cast<WalletFfiError>(err);
+}
+
+static WalletFfiError fillPrivateAccountIdentity(const char* key, FfiAccountIdentity *out_account_identity) {
+    const int err = LogosCMockStore::instance().getReturn<int>(key);
+    if (err == 0 && out_account_identity) {
+        out_account_identity->kind = FfiAccountIdentityKind::PRIVATE_OWNED;
+        memset(out_account_identity->account_id.data, 0xAB, sizeof(out_account_identity->account_id));
+        out_account_identity->key_path = nullptr;
+        memset(out_account_identity->nullifier_secret_key.data, 0x11, sizeof(out_account_identity->nullifier_secret_key));
+        memset(out_account_identity->nullifier_public_key.data, 0x22, sizeof(out_account_identity->nullifier_public_key));
+        out_account_identity->viewing_public_key = nullptr;
+        out_account_identity->viewing_public_key_len = 0;
+        memset(out_account_identity->identifier.data, 0x01, sizeof(out_account_identity->identifier));
+    }
+    return static_cast<WalletFfiError>(err);
+}
+
+static WalletFfiError fillTransactionResult(const char* key, FfiTransactionResult *out_result) {
+    const int err = LogosCMockStore::instance().getReturn<int>(key);
+    if (out_result) {
+        out_result->success = (err == 0);
+        if (err == 0) {
+            const char* tx = LogosCMockStore::instance().getReturnString("transaction_tx_hash");
+            // getReturnString yields "" (non-null) when unset; fall back to a default.
+            out_result->tx_hash = strdup((tx && *tx) ? tx : "0xmocktxhash2");
+        } else {
+            out_result->tx_hash = nullptr;
+        }
+        out_result->secrets_data = nullptr;
+        out_result->secrets_size = 0; 
     }
     return static_cast<WalletFfiError>(err);
 }
@@ -326,6 +382,88 @@ void wallet_ffi_free_transfer_result(FfiTransferResult* result) {
         free(result->tx_hash);
         result->tx_hash = nullptr;
     }
+}
+
+WalletFfiError wallet_ffi_transfer_elf(FfiProgram *ffi_program) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_transfer_elf");
+    return fillProgram("wallet_ffi_transfer_elf", ffi_program);
+}
+WalletFfiError wallet_ffi_token_elf(FfiProgram *ffi_program) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_token_elf");
+    return fillProgram("wallet_ffi_token_elf", ffi_program);
+}
+WalletFfiError wallet_ffi_ata_elf(FfiProgram *ffi_program) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_ata_elf");
+    return fillProgram("wallet_ffi_ata_elf", ffi_program);
+}
+WalletFfiError wallet_ffi_amm_elf(FfiProgram *ffi_program) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_amm_elf");
+    return fillProgram("wallet_ffi_amm_elf", ffi_program);
+}
+
+WalletFfiError wallet_ffi_resolve_public_account(FfiBytes32 account_id, bool needs_sign, FfiAccountIdentity *out_account_identity) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_resolve_public_account");
+    return fillPublicAccountIdentity("wallet_ffi_resolve_public_account", out_account_identity);
+}
+
+WalletFfiError wallet_ffi_resolve_private_account(WalletHandle *handle, FfiBytes32 account_id, FfiAccountIdentity *out_account_identity){
+    LOGOS_CMOCK_RECORD("wallet_ffi_resolve_private_account");
+    return fillPrivateAccountIdentity("wallet_ffi_resolve_private_account", out_account_identity);
+}
+
+void wallet_ffi_free_instruction_words(FfiInstructionWords *words){
+    LOGOS_CMOCK_RECORD("wallet_ffi_free_instruction_words");
+    if (words && words->instruction_words) {
+        free(words->instruction_words);
+        words->instruction_words = nullptr;
+        words->instruction_words_size = 0;
+    }
+}
+
+void wallet_ffi_free_account_identity(FfiAccountIdentity *account_identity){
+    LOGOS_CMOCK_RECORD("wallet_ffi_free_account_identity");
+    if (account_identity && account_identity->viewing_public_key) {
+        free(const_cast<uint8_t*>(account_identity->viewing_public_key));
+        account_identity->viewing_public_key = nullptr;
+        account_identity->viewing_public_key_len = 0;
+    }
+}
+
+void wallet_ffi_free_transaction_result(FfiTransactionResult *result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_free_transaction_result");
+    if (result && result->tx_hash) {
+        free(const_cast<char*>(result->tx_hash));
+        result->tx_hash = nullptr;
+    }
+} 
+
+void wallet_ffi_free_ffi_program(FfiProgram *ffi_program) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_free_ffi_program");
+    if (ffi_program && ffi_program->elf_data) {
+        free(const_cast<uint8_t*>(ffi_program->elf_data));
+        ffi_program->elf_data = nullptr;
+        ffi_program->elf_size = 0;
+    }
+}
+
+WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle, const FfiAccountIdentity *account_identities,
+uintptr_t account_identities_size, const uint32_t *instruction_words, uintptr_t instruction_words_size,
+const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResult *out_result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_public_transaction");
+    return fillTransactionResult("wallet_ffi_send_generic_public_transaction", out_result);
+}
+
+WalletFfiError wallet_ffi_send_generic_private_transaction(WalletHandle *handle, const FfiAccountIdentity *account_identities,
+uintptr_t account_identities_size, const uint32_t *instruction_words, uintptr_t instruction_words_size,
+const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResult *out_result){
+    LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_private_transaction");
+    return fillTransactionResult("wallet_ffi_send_generic_private_transaction", out_result);
+}    
+
+WalletFfiError wallet_ffi_program_deployment(WalletHandle *handle, const uint8_t *elf_data, uintptr_t elf_size,
+FfiTransactionResult *out_result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_program_deployment");
+    return fillTransactionResult("wallet_ffi_program_deployment", out_result);
 }
 
 // === Configuration ===
