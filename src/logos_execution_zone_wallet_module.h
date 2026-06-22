@@ -30,9 +30,11 @@ public:
     std::string version() const;
 
     // === Wallet Lifecycle ===
-    int64_t create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
+    std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
     int64_t open(const std::string& config_path, const std::string& storage_path);
     int64_t save();
+
+    int64_t restore_storage(const std::string& mnemonic, const std::string password);
 
     // === Account Management ===
     std::string create_account_public();

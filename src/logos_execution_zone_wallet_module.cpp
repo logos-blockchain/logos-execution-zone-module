@@ -1033,20 +1033,33 @@ std::string LogosExecutionZoneWalletModule::send_program_deployment_transaction(
 
 // === Wallet Lifecycle ===
 
-int64_t LogosExecutionZoneWalletModule::create_new(
+std::string LogosExecutionZoneWalletModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
     const std::string& password
 ) {
     if (walletHandle) {
         fprintf(stderr, "create_new: wallet is already open\n");
-        return INTERNAL_ERROR;
+        return {};
     }
 
-    walletHandle = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
-    if (!walletHandle) {
+    FfiCreateWalletResult create_result = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
+    if (!create_result.wallet) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
-        return INTERNAL_ERROR;
+        return {};
+    }
+
+    walletHandle = create_result.wallet;
+    std::string mnemonic = *create_result.mnemonic;
+
+    return mnemonic;
+}
+
+int64_t LogosExecutionZoneWalletModule::restore_storage(const std::string& mnemonic, const std::string password) {
+    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str());
+    if (error != SUCCESS) {
+        fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
+        return error;
     }
 
     return SUCCESS;

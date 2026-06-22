@@ -47,10 +47,16 @@ extern "C" {
 
 // === Lifecycle ===
 
-WalletHandle* wallet_ffi_create_new(const char*, const char*, const char*) {
+FfiCreateWalletResult wallet_ffi_create_new(const char*, const char*, const char*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_create_new");
     const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_create_new");
-    return ok ? reinterpret_cast<WalletHandle*>(&g_fakeWallet) : nullptr;
+    const char* mnemonic_ok = LOGOS_CMOCK_RETURN_STRING("wallet_ffi_create_new");
+    FfiCreateWalletResult result;
+    char* mn_char = strdup((mnemonic_ok && *mnemonic_ok) ? mnemonic_ok : "word word");
+    const char** mn = (const char**)&mn_char;
+    result.mnemonic = mn;
+    result.wallet = ok ? reinterpret_cast<WalletHandle*>(&g_fakeWallet) : nullptr;
+    return result;
 }
 
 WalletHandle* wallet_ffi_open(const char*, const char*) {
@@ -66,6 +72,12 @@ int wallet_ffi_save(WalletHandle*) {
 
 void wallet_ffi_destroy(WalletHandle*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_destroy");
+}
+
+WalletFfiError wallet_ffi_restore_data(WalletHandle*, const char*, const char*) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_restore_data");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_restore_data");
+    return static_cast<WalletFfiError>(err);
 }
 
 // === Account management ===

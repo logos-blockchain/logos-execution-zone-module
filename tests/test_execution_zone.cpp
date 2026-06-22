@@ -374,10 +374,10 @@ LOGOS_TEST(create_new_success_then_double_open_fails) {
     t.mockCFunction("wallet_ffi_create_new").returns(1); // non-null handle
     LogosExecutionZoneWalletModule module;
 
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), static_cast<int64_t>(SUCCESS));
+    LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw").empty());
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_new"));
     // Second attempt: already open.
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), static_cast<int64_t>(INTERNAL_ERROR));
+    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
 }
 
 LOGOS_TEST(create_new_null_handle_returns_internal_error) {
@@ -385,7 +385,7 @@ LOGOS_TEST(create_new_null_handle_returns_internal_error) {
     t.mockCFunction("wallet_ffi_create_new").returns(0); // null handle
     LogosExecutionZoneWalletModule module;
 
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), static_cast<int64_t>(INTERNAL_ERROR));
+    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
 }
 
 LOGOS_TEST(open_success) {

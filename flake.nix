@@ -4,7 +4,7 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/lssa?rev=62d9ba10f8f86db3a1f04b329a1bd9d5b893bf60"; # lez-core-v0.1.0
+    logos-execution-zone.url = "github:logos-blockchain/lssa?rev=ca64789a90019e193797d63dfdb68b770ddf621d"; # latest mnemonic updates, to be replaced after merging
   };
 
   outputs = inputs@{ logos-module-builder, ... }:
