@@ -1,0 +1,78 @@
+name: PR review board
+
+# Keeps the org "LEZ PR Review Queue" board in sync for this repo.
+# Adds each PR to the board and sets its Status column, enforcing the
+# team rule that Approved means 2+ approvals.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-review-board-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_PAT }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      PROJECT_ID: PVT_kwDODrxXXM4BbXZ_
+      STATUS_FIELD: PVTSSF_lADODrxXXM4BbXZ_zhWIZnU
+      OPT_DRAFT: f735bdac
+      OPT_NEEDS: cbc7321d
+      OPT_CHANGES: 302bbbd6
+      OPT_APPROVED: c9e0743e
+      OPT_DONE: 6a3c7950
+    steps:
+      - name: Sync PR status to board
+        run: |
+          set -euo pipefail
+
+          DATA=$(gh pr view "$PR" --repo "$REPO" --json id,isDraft,mergedAt,state,latestReviews)
+          PR_NODE=$(echo "$DATA" | jq -r '.id')
+          IS_DRAFT=$(echo "$DATA" | jq -r '.isDraft')
+          MERGED=$(echo "$DATA" | jq -r '(.mergedAt != null)')
+          STATE=$(echo "$DATA" | jq -r '.state')
+          NAP=$(echo "$DATA" | jq '[.latestReviews[] | select(.state=="APPROVED")] | length')
+          NCH=$(echo "$DATA" | jq '[.latestReviews[] | select(.state=="CHANGES_REQUESTED")] | length')
+
+          if [ "$MERGED" = "true" ]; then
+            OPT=$OPT_DONE; LABEL="Merged / Done"
+          elif [ "$STATE" = "CLOSED" ]; then
+            echo "PR #$PR closed unmerged; leaving board entry untouched."
+            exit 0
+          elif [ "$IS_DRAFT" = "true" ]; then
+            OPT=$OPT_DRAFT; LABEL="Draft"
+          elif [ "$NCH" -gt 0 ]; then
+            OPT=$OPT_CHANGES; LABEL="Changes requested"
+          elif [ "$NAP" -ge 2 ]; then
+            OPT=$OPT_APPROVED; LABEL="Approved"
+          else
+            OPT=$OPT_NEEDS; LABEL="Needs review"
+          fi
+
+          # Add to the project (idempotent: returns existing item if already present)
+          ITEM=$(gh api graphql -f query='
+            mutation($p:ID!, $c:ID!) {
+              addProjectV2ItemById(input:{projectId:$p, contentId:$c}) { item { id } }
+            }' -f p="$PROJECT_ID" -f c="$PR_NODE" --jq '.data.addProjectV2ItemById.item.id')
+
+          # Set the Status single-select field
+          gh api graphql -f query='
+            mutation($p:ID!, $i:ID!, $f:ID!, $o:String!) {
+              updateProjectV2ItemFieldValue(input:{
+                projectId:$p, itemId:$i, fieldId:$f,
+                value:{ singleSelectOptionId:$o }
+              }) { projectV2Item { id } }
+            }' -f p="$PROJECT_ID" -f i="$ITEM" -f f="$STATUS_FIELD" -f o="$OPT"
+
+          echo "$REPO#$PR (approvals=$NAP changes=$NCH) -> $LABEL"
