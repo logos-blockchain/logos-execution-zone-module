@@ -591,9 +591,9 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded(
         return transferResultToJson(nullptr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
-    // Bandaid, I am not sure, how exactly identifiers should be used.
+    // ToDo: Bandaid, I am not sure, how exactly identifiers should be used.
     FfiU128 identifier {};
-    // Keycart not yet supported
+    // ToDo: Add keycard support
     const char *key_path = nullptr;
 
     FfiTransferResult result{};
@@ -660,7 +660,7 @@ std::string LogosExecutionZoneWalletModule::transfer_private(
         return transferResultToJson(nullptr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
-    // Bandaid, I am not sure, how exactly identifiers should be used.
+    // ToDo: Bandaid, I am not sure, how exactly identifiers should be used.
     FfiU128 identifier {};
 
     FfiTransferResult result{};
@@ -692,7 +692,7 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded_owned(
         return transferResultToJson(nullptr, "transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
-    // Keycart not yet supported
+    // ToDo: Add keycard support
     const char *key_path = nullptr;
 
     FfiTransferResult result{};
