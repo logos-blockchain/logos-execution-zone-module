@@ -156,22 +156,22 @@ typedef struct FfiTransactionResult {
   uintptr_t secrets_size;
 } FfiTransactionResult;
 
-typedef struct FfiCreateWalletResult {
+typedef struct FfiCreateWalletOutput {
   struct WalletHandle *wallet;
   /**
    * C compatible(null terminated) string.
    */
-  const char **mnemonic;
-} FfiCreateWalletResult;
+  char *mnemonic;
+} FfiCreateWalletOutput;
 
 // === Lifecycle ===
 
-FfiCreateWalletResult wallet_ffi_create_new(const char* config_path, const char* storage_path, const char* password);
+FfiCreateWalletOutput wallet_ffi_create_new(const char* config_path, const char* storage_path, const char* password);
 WalletHandle* wallet_ffi_open(const char* config_path, const char* storage_path);
 int wallet_ffi_save(WalletHandle* handle);
 void wallet_ffi_destroy(WalletHandle* handle);
 
-WalletFfiError wallet_ffi_restore_data(WalletHandle *handle, const char *mnemonic, const char *password);
+WalletFfiError wallet_ffi_restore_data(WalletHandle *handle, const char *mnemonic, const char *password, uint32_t depth);
 
 // === Account management ===
 

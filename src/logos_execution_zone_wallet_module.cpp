@@ -1043,20 +1043,22 @@ std::string LogosExecutionZoneWalletModule::create_new(
         return {};
     }
 
-    FfiCreateWalletResult create_result = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
-    if (!create_result.wallet) {
+    FfiCreateWalletOutput create_output = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
+    if (!create_output.wallet) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
         return {};
     }
 
-    walletHandle = create_result.wallet;
-    std::string mnemonic = *create_result.mnemonic;
+    walletHandle = create_output.wallet;
+    std::string mnemonic(create_output.mnemonic);
+
+    wallet_ffi_free_string(create_output.mnemonic);
 
     return mnemonic;
 }
 
-int64_t LogosExecutionZoneWalletModule::restore_storage(const std::string& mnemonic, const std::string password) {
-    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str());
+int64_t LogosExecutionZoneWalletModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
+    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
     if (error != SUCCESS) {
         fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
         return error;
