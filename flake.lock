@@ -802,7 +802,12 @@
     },
     "logos-cpp-sdk_15": {
       "inputs": {
+        "logos-lidl": "logos-lidl_5",
         "logos-nix": "logos-nix_146",
+        "logos-protocol": [
+          "logos-module-builder",
+          "logos-protocol"
+        ],
         "nixpkgs": [
           "logos-module-builder",
           "logos-cpp-sdk",
@@ -811,11 +816,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1778167634,
-        "narHash": "sha256-gbBYvyEDxBHF8iACAE/dFcljBkIUTWr1rP3gBLj62JI=",
+        "lastModified": 1781897505,
+        "narHash": "sha256-sRVgfo8VfWOXb3IH2JqZQAqBSfL0bYo3FrFSgS6yvqk=",
         "owner": "logos-co",
         "repo": "logos-cpp-sdk",
-        "rev": "25c88f4d48fa95ea4437194bcf60bd8d0cf84a74",
+        "rev": "aea29d37975aa0c32fdf37d7119830be905acf34",
         "type": "github"
       },
       "original": {
@@ -1949,6 +1954,35 @@
       "inputs": {
         "logos-nix": [
           "logos-module-builder",
+          "logos-cpp-sdk",
+          "logos-nix"
+        ],
+        "nixpkgs": [
+          "logos-module-builder",
+          "logos-cpp-sdk",
+          "logos-lidl",
+          "logos-nix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1781653473,
+        "narHash": "sha256-8l2tE2K5nY1grcFROQHC1By1jVI0NrfkS3k2v2y6R2I=",
+        "owner": "logos-co",
+        "repo": "logos-lidl",
+        "rev": "8c95d4f0cc6a10195c70ed71e85b7a4cddca02f8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "logos-co",
+        "repo": "logos-lidl",
+        "type": "github"
+      }
+    },
+    "logos-lidl_6": {
+      "inputs": {
+        "logos-nix": [
+          "logos-module-builder",
           "logos-qt-sdk",
           "logos-nix"
         ],
@@ -1974,7 +2008,7 @@
         "type": "github"
       }
     },
-    "logos-lidl_6": {
+    "logos-lidl_7": {
       "inputs": {
         "logos-nix": [
           "logos-module-builder",
@@ -4205,11 +4239,11 @@
         "nixpkgs": "nixpkgs_148"
       },
       "locked": {
-        "lastModified": 1773955630,
-        "narHash": "sha256-KqzMoWYIVp2xMgphs7v02T/BE54RKMFxpdC2duhJKG0=",
+        "lastModified": 1774455309,
+        "narHash": "sha256-3AN7aFnArdysrbQQ2UskWzjNSFADb4hDCsnx69Fa0ng=",
         "owner": "logos-co",
         "repo": "logos-nix",
-        "rev": "0e9e6d66ab8eb34f59e45ed448f7dc29130feb88",
+        "rev": "e637a1f5e871244d1c2df1e3c52a067f2eb406f2",
         "type": "github"
       },
       "original": {
@@ -9862,11 +9896,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782082589,
-        "narHash": "sha256-Qeqxp0HYb3oTpmfD5YlFPJzpAJa7Ilb9o4sMeVvmHRI=",
+        "lastModified": 1781303997,
+        "narHash": "sha256-j9U4wPlHdN5oA+65h1SAo/s2YUHvNYKxij4/pCqEtAs=",
         "owner": "logos-co",
         "repo": "logos-protocol",
-        "rev": "315a3a2e0af61bc47aad5601ee44cd7689975820",
+        "rev": "9de4165ab68ece4071647026cb2596bed8a8d7e2",
         "type": "github"
       },
       "original": {
@@ -10146,11 +10180,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781962335,
-        "narHash": "sha256-TThOj0o115vPawAPJgv5zhDnV/hVfnDqjpga9Z2SlPU=",
+        "lastModified": 1781655169,
+        "narHash": "sha256-wjbHmczSG8VUMlRkIp3pviVTLPTzReDbIRfBpqnlQr4=",
         "owner": "logos-co",
         "repo": "logos-qt-sdk",
-        "rev": "cdf077cdb296b39fe45d6f774a0b4ae71be48d45",
+        "rev": "812369213719773f6486755a30c476a699469b37",
         "type": "github"
       },
       "original": {
@@ -10201,7 +10235,7 @@
           "logos-module-builder",
           "logos-cpp-sdk"
         ],
-        "logos-lidl": "logos-lidl_5",
+        "logos-lidl": "logos-lidl_6",
         "logos-nix": "logos-nix_154",
         "logos-protocol": [
           "logos-module-builder",
@@ -10267,7 +10301,7 @@
     },
     "logos-rust-sdk": {
       "inputs": {
-        "logos-lidl": "logos-lidl_6",
+        "logos-lidl": "logos-lidl_7",
         "logos-logoscore-cli": [
           "logos-module-builder",
           "logos-cpp-sdk"
