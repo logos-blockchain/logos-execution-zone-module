@@ -30,9 +30,11 @@ public:
     std::string version() const;
 
     // === Wallet Lifecycle ===
-    int64_t create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
+    std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
     int64_t open(const std::string& config_path, const std::string& storage_path);
     int64_t save();
+
+    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth);
 
     // === Account Management ===
     std::string create_account_public();
@@ -69,6 +71,28 @@ public:
     std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
     std::string register_public_account(const std::string& account_id_hex);
     std::string register_private_account(const std::string& account_id_hex);
+
+    std::vector<uint8_t> authenticated_transfer_elf();
+    std::vector<uint8_t> token_elf();
+    std::vector<uint8_t> amm_elf();
+    std::vector<uint8_t> ata_elf();
+
+    std::string send_generic_public_transaction(
+        const std::vector<std::string>& account_ids,
+        const std::vector<bool>& signing_requirements, 
+        const std::vector<uint32_t>& instruction,
+        const std::vector<uint8_t>& program_elf,
+        const std::vector<std::vector<uint8_t>>& program_dependencies
+    );
+    std::string send_generic_private_transaction(
+        const std::vector<std::string>& account_ids,
+        const std::vector<uint32_t>& instruction,
+        const std::vector<uint8_t>& program_elf,
+        const std::vector<std::vector<uint8_t>>& program_dependencies
+    );
+    std::string send_program_deployment_transaction(
+        const std::vector<uint8_t>& program_elf
+    );
 
     // === Configuration ===
     std::string get_sequencer_addr();

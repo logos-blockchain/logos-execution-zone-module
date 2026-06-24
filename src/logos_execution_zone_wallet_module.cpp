@@ -55,6 +55,7 @@ constexpr auto NullifierPublicKey = "nullifier_public_key";
 constexpr auto ViewingPublicKey = "viewing_public_key";
 constexpr auto AccountId = "account_id";
 constexpr auto IsPublic = "is_public";
+constexpr auto Secrets = "secrets";
 } // namespace JsonKeys
 
 bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength = -1) {
@@ -123,6 +124,23 @@ std::string transferResultToJson(const FfiTransferResult* result, const std::str
     const bool isError = !errorMessage.empty();
     obj[JsonKeys::Success] = !isError && result && result->success;
     obj[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? std::string(result->tx_hash) : std::string();
+    obj[JsonKeys::Error] = errorMessage;
+    return obj.dump();
+}
+
+// Builds JSON { success, tx_hash, secrets, error } for both success (result + empty error) and failure (nullptr + errorMessage) in case of generic transaction.
+std::string genericTransactionResultToJson(const FfiTransactionResult* result, const std::string& errorMessage) {
+    nlohmann::json obj = nlohmann::json::object();
+    const bool isError = !errorMessage.empty();
+    obj[JsonKeys::Success] = !isError && result && result->success;
+    obj[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? std::string(result->tx_hash) : std::string();
+    std::vector<std::string> secrets;
+    if (!isError && result && result->secrets_data) {
+        for (uintptr_t i = 0; i < result->secrets_size; ++i) {
+            secrets.push_back(bytes32ToHex(result->secrets_data[i]));
+        }
+    }
+    obj[JsonKeys::Secrets] = secrets;
     obj[JsonKeys::Error] = errorMessage;
     return obj.dump();
 }
@@ -573,8 +591,13 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded(
         return transferResultToJson(nullptr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
+    // ToDo: Bandaid, I am not sure, how exactly identifiers should be used.
+    FfiU128 identifier {};
+    // ToDo: Add keycard support
+    const char *key_path = nullptr;
+
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &identifier, &amount, key_path, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_shielded: wallet FFI error %d\n", error);
@@ -637,8 +660,11 @@ std::string LogosExecutionZoneWalletModule::transfer_private(
         return transferResultToJson(nullptr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
+    // ToDo: Bandaid, I am not sure, how exactly identifiers should be used.
+    FfiU128 identifier {};
+
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &identifier, &amount, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_private: wallet FFI error %d\n", error);
@@ -666,8 +692,11 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded_owned(
         return transferResultToJson(nullptr, "transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
+    // ToDo: Add keycard support
+    const char *key_path = nullptr;
+
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, &result);
+    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, key_path, &result);
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_shielded_owned: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded_owned: wallet FFI error " + std::to_string(error));
@@ -739,22 +768,300 @@ std::string LogosExecutionZoneWalletModule::register_private_account(const std::
     return resultJson;
 }
 
+std::vector<uint8_t> LogosExecutionZoneWalletModule::token_elf() {
+    FfiProgram ffi_program{};
+    WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
+    if (error != SUCCESS) {
+        fprintf(stderr, "token_elf: wallet FFI error %d\n", error);
+        return std::vector<uint8_t>{};
+    }
+
+    std::vector<uint8_t> result(ffi_program.elf_data,
+                                 ffi_program.elf_data + ffi_program.elf_size);
+
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+std::vector<uint8_t> LogosExecutionZoneWalletModule::amm_elf() {
+    FfiProgram ffi_program{};
+    WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
+    if (error != SUCCESS) {
+        fprintf(stderr, "amm_elf: wallet FFI error %d\n", error);
+        return std::vector<uint8_t>{};
+    }
+
+    std::vector<uint8_t> result(ffi_program.elf_data,
+                                 ffi_program.elf_data + ffi_program.elf_size);
+
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+std::vector<uint8_t> LogosExecutionZoneWalletModule::ata_elf() {
+    FfiProgram ffi_program{};
+    WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
+    if (error != SUCCESS) {
+        fprintf(stderr, "ata_elf: wallet FFI error %d\n", error);
+        return std::vector<uint8_t>{};
+    }
+
+    std::vector<uint8_t> result(ffi_program.elf_data,
+                                 ffi_program.elf_data + ffi_program.elf_size);
+
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+std::vector<uint8_t> LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
+    FfiProgram ffi_program{};
+    WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
+    if (error != SUCCESS) {
+        fprintf(stderr, "authenticated_transfer_elf: wallet FFI error %d\n", error);
+        return std::vector<uint8_t>{};
+    }
+
+    std::vector<uint8_t> result(ffi_program.elf_data,
+                                 ffi_program.elf_data + ffi_program.elf_size);
+
+    wallet_ffi_free_ffi_program(&ffi_program);
+    return result;
+}
+
+std::string LogosExecutionZoneWalletModule::send_generic_public_transaction(
+        const std::vector<std::string>& account_ids,
+        const std::vector<bool>& signing_requirements, 
+        const std::vector<uint32_t>& instruction,
+        const std::vector<uint8_t>& program_elf,
+        const std::vector<std::vector<uint8_t>>& program_dependencies
+) {
+    std::vector<FfiAccountIdentity> identities_resolved;
+    identities_resolved.reserve(account_ids.size());
+
+    for (int i = 0; i < account_ids.size(); ++i) {
+        FfiAccountIdentity acc_identity{};
+
+        FfiBytes32 id{};
+        if (!hexToBytes32(account_ids[i], &id)) {
+            fprintf(stderr, "wallet_ffi_resolve_public_account: invalid account_id_hex");
+            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_public_account: invalid account_id_hex"));
+        }
+
+        WalletFfiError error = wallet_ffi_resolve_public_account(id, signing_requirements[i], &acc_identity);
+        if (error != SUCCESS) {
+            fprintf(stderr, "wallet_ffi_resolve_public_account failed for index %d: wallet FFI error %d\n", i, error);
+            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_public_account: wallet FFI error ") + std::to_string(error));
+        }
+        identities_resolved.push_back(acc_identity);
+    }
+
+    const FfiAccountIdentity *account_identities = identities_resolved.data();
+    uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
+
+    const uint32_t* input_instruction_data = instruction.data();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+
+    FfiProgram main_program {};
+
+    const uint8_t *program_elf_data = program_elf.data();
+    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
+
+    main_program.elf_data = program_elf_data;
+    main_program.elf_size = program_elf_size;
+
+    std::vector<FfiProgram> ffi_program_dependencies;
+    ffi_program_dependencies.reserve(program_dependencies.size());
+
+    for (int i = 0; i < program_dependencies.size(); ++i) {
+        FfiProgram program{};
+
+        const uint8_t *program_elf_data = program_dependencies[i].data();
+        uintptr_t program_elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
+
+        program.elf_data = program_elf_data;
+        program.elf_size = program_elf_size;
+
+        ffi_program_dependencies.push_back(program);
+    }
+
+    const FfiProgram *dependencies_data = ffi_program_dependencies.data();
+    uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
+
+    FfiProgramWithDependencies program_with_dependencies {};
+
+    program_with_dependencies.program = main_program;
+    program_with_dependencies.deps = dependencies_data;
+    program_with_dependencies.deps_size = dependencies_size;
+
+    FfiTransactionResult result {};
+
+    const WalletFfiError error = wallet_ffi_send_generic_public_transaction(
+        walletHandle, 
+        account_identities,
+        account_identities_size,
+        input_instruction_data, 
+        input_instruction_data_size,
+        &program_with_dependencies,
+        &result
+    );
+
+    for (FfiAccountIdentity& acc_identity : identities_resolved) {
+        wallet_ffi_free_account_identity(&acc_identity);
+    }
+
+    if (error != SUCCESS) {
+        fprintf(stderr, "send_generic_public_transaction: wallet FFI error %d\n", error);
+        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: wallet FFI error ") + std::to_string(error));
+    }
+    std::string resultJson = genericTransactionResultToJson(&result, std::string());
+    wallet_ffi_free_transaction_result(&result);
+    return resultJson;
+}
+
+std::string LogosExecutionZoneWalletModule::send_generic_private_transaction(
+        const std::vector<std::string>& account_ids,
+        const std::vector<uint32_t>& instruction,
+        const std::vector<uint8_t>& program_elf,
+        const std::vector<std::vector<uint8_t>>& program_dependencies
+) {
+    std::vector<FfiAccountIdentity> identities_resolved;
+    identities_resolved.reserve(account_ids.size());
+
+    for (int i = 0; i < account_ids.size(); ++i) {
+        FfiAccountIdentity acc_identity{};
+
+        FfiBytes32 id{};
+        if (!hexToBytes32(account_ids[i], &id)) {
+            fprintf(stderr, "wallet_ffi_resolve_private_account: invalid account_id_hex");
+            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_private_account: invalid account_id_hex"));
+        }
+
+        WalletFfiError error = wallet_ffi_resolve_private_account(walletHandle, id, &acc_identity);
+        if (error != SUCCESS) {
+            fprintf(stderr, "wallet_ffi_resolve_private_account failed for index %d: wallet FFI error %d\n", i, error);
+            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_private_account: wallet FFI error ") + std::to_string(error));
+        }
+        identities_resolved.push_back(acc_identity);
+    }
+
+    const FfiAccountIdentity *account_identities = identities_resolved.data();
+    uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
+
+    const uint32_t* input_instruction_data = instruction.data();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+
+    FfiProgram main_program {};
+
+    const uint8_t *program_elf_data = program_elf.data();
+    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
+
+    main_program.elf_data = program_elf_data;
+    main_program.elf_size = program_elf_size;
+
+    std::vector<FfiProgram> ffi_program_dependencies;
+    ffi_program_dependencies.reserve(program_dependencies.size());
+
+    for (int i = 0; i < program_dependencies.size(); ++i) {
+        FfiProgram program{};
+
+        const uint8_t *program_elf_data = program_dependencies[i].data();
+        uintptr_t program_elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
+
+        program.elf_data = program_elf_data;
+        program.elf_size = program_elf_size;
+
+        ffi_program_dependencies.push_back(program);
+    }
+
+    const FfiProgram *dependencies_data = ffi_program_dependencies.data();
+    uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
+
+    FfiProgramWithDependencies program_with_dependencies {};
+
+    program_with_dependencies.program = main_program;
+    program_with_dependencies.deps = dependencies_data;
+    program_with_dependencies.deps_size = dependencies_size;
+
+    FfiTransactionResult result {};
+
+    const WalletFfiError error = wallet_ffi_send_generic_private_transaction(
+        walletHandle, 
+        account_identities,
+        account_identities_size,
+        input_instruction_data, 
+        input_instruction_data_size,
+        &program_with_dependencies,
+        &result
+    );
+
+    for (FfiAccountIdentity& acc_identity : identities_resolved) {
+        wallet_ffi_free_account_identity(&acc_identity);
+    }
+
+    if (error != SUCCESS) {
+        fprintf(stderr, "send_generic_private_transaction: wallet FFI error %d\n", error);
+        return transferResultToJson(nullptr, std::string("send_generic_private_transaction: wallet FFI error ") + std::to_string(error));
+    }
+    std::string resultJson = genericTransactionResultToJson(&result, std::string());
+    wallet_ffi_free_transaction_result(&result);
+    return resultJson;
+}
+
+std::string LogosExecutionZoneWalletModule::send_program_deployment_transaction(
+        const std::vector<uint8_t>& program_elf
+) {
+    FfiTransactionResult result {};
+
+    const uint8_t *program_elf_data = program_elf.data();
+    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
+
+    const WalletFfiError error = wallet_ffi_program_deployment(
+        walletHandle, 
+        program_elf_data,
+        program_elf_size,
+        &result
+    );
+
+    if (error != SUCCESS) {
+        fprintf(stderr, "send_program_deployment_transaction: wallet FFI error %d\n", error);
+        return transferResultToJson(nullptr, std::string("send_program_deployment_transaction: wallet FFI error ") + std::to_string(error));
+    }
+    std::string resultJson = genericTransactionResultToJson(&result, std::string());
+    wallet_ffi_free_transaction_result(&result);
+    return resultJson;
+}
+
 // === Wallet Lifecycle ===
 
-int64_t LogosExecutionZoneWalletModule::create_new(
+std::string LogosExecutionZoneWalletModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
     const std::string& password
 ) {
     if (walletHandle) {
         fprintf(stderr, "create_new: wallet is already open\n");
-        return INTERNAL_ERROR;
+        return {};
     }
 
-    walletHandle = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
-    if (!walletHandle) {
+    FfiCreateWalletOutput create_output = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
+    if (!create_output.wallet) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
-        return INTERNAL_ERROR;
+        return {};
+    }
+
+    walletHandle = create_output.wallet;
+    std::string mnemonic(create_output.mnemonic);
+
+    wallet_ffi_free_string(create_output.mnemonic);
+
+    return mnemonic;
+}
+
+int64_t LogosExecutionZoneWalletModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
+    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
+    if (error != SUCCESS) {
+        fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
+        return error;
     }
 
     return SUCCESS;
