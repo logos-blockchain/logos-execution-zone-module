@@ -1,0 +1,118 @@
+name: PR review board
+
+# Keeps the org "LEZ PR Review Queue" board in sync for this repo.
+# Adds each PR to the board and sets its Status column, enforcing the
+# team rule that Approved means 2+ approvals.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-review-board-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_PAT }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      PROJECT_ID: PVT_kwDODrxXXM4BbXZ_
+      STATUS_FIELD: PVTSSF_lADODrxXXM4BbXZ_zhWIZnU
+      OPT_DRAFT: f735bdac
+      OPT_NEEDS: cbc7321d
+      OPT_CHANGES: 302bbbd6
+      OPT_APPROVED: c9e0743e
+      PRIORITY_FIELD: PVTSSF_lADODrxXXM4BbXZ_zhWIyPA
+      PRIO_URGENT: b72854fd
+      PRIO_HIGH: 5e87ebf9
+      PRIO_MEDIUM: 22367611
+      PRIO_LOW: 41f60140
+    steps:
+      - name: Sync PR status to board
+        run: |
+          set -euo pipefail
+
+          DATA=$(gh pr view "$PR" --repo "$REPO" --json id,isDraft,mergedAt,state,latestReviews,labels)
+          PR_NODE=$(echo "$DATA" | jq -r '.id')
+          IS_DRAFT=$(echo "$DATA" | jq -r '.isDraft')
+          MERGED=$(echo "$DATA" | jq -r '(.mergedAt != null)')
+          STATE=$(echo "$DATA" | jq -r '.state')
+          NAP=$(echo "$DATA" | jq '[.latestReviews[] | select(.state=="APPROVED")] | length')
+          NCH=$(echo "$DATA" | jq '[.latestReviews[] | select(.state=="CHANGES_REQUESTED")] | length')
+
+          if [ "$STATE" = "CLOSED" ] && [ "$MERGED" != "true" ]; then
+            echo "PR #$PR closed unmerged; leaving board entry untouched."
+            exit 0
+          fi
+
+          # Add to the project (idempotent: returns existing item if already present)
+          ITEM=$(gh api graphql -f query='
+            mutation($p:ID!, $c:ID!) {
+              addProjectV2ItemById(input:{projectId:$p, contentId:$c}) { item { id } }
+            }' -f p="$PROJECT_ID" -f c="$PR_NODE" --jq '.data.addProjectV2ItemById.item.id')
+
+          # Merged PRs are archived off the active board
+          if [ "$MERGED" = "true" ]; then
+            gh api graphql -f query='
+              mutation($p:ID!, $i:ID!) {
+                archiveProjectV2Item(input:{projectId:$p, itemId:$i}) { item { id } }
+              }' -f p="$PROJECT_ID" -f i="$ITEM"
+            echo "$REPO#$PR merged -> archived"
+            exit 0
+          fi
+
+          # Status
+          if [ "$IS_DRAFT" = "true" ]; then
+            OPT=$OPT_DRAFT; LABEL="Draft"
+          elif [ "$NCH" -gt 0 ]; then
+            OPT=$OPT_CHANGES; LABEL="Changes requested"
+          elif [ "$NAP" -ge 2 ]; then
+            OPT=$OPT_APPROVED; LABEL="Approved"
+          else
+            OPT=$OPT_NEEDS; LABEL="Needs review"
+          fi
+
+          gh api graphql -f query='
+            mutation($p:ID!, $i:ID!, $f:ID!, $o:String!) {
+              updateProjectV2ItemFieldValue(input:{
+                projectId:$p, itemId:$i, fieldId:$f,
+                value:{ singleSelectOptionId:$o }
+              }) { projectV2Item { id } }
+            }' -f p="$PROJECT_ID" -f i="$ITEM" -f f="$STATUS_FIELD" -f o="$OPT"
+
+          # Set Priority from a priority:* label (clear it when none is present)
+          LABELS=$(echo "$DATA" | jq -r '.labels[].name')
+          case "$LABELS" in
+            *priority:urgent*) POPT=$PRIO_URGENT ;;
+            *priority:high*)   POPT=$PRIO_HIGH ;;
+            *priority:medium*) POPT=$PRIO_MEDIUM ;;
+            *priority:low*)    POPT=$PRIO_LOW ;;
+            *) POPT="" ;;
+          esac
+          if [ -n "$POPT" ]; then
+            gh api graphql -f query='
+              mutation($p:ID!, $i:ID!, $f:ID!, $o:String!) {
+                updateProjectV2ItemFieldValue(input:{
+                  projectId:$p, itemId:$i, fieldId:$f,
+                  value:{ singleSelectOptionId:$o }
+                }) { projectV2Item { id } }
+              }' -f p="$PROJECT_ID" -f i="$ITEM" -f f="$PRIORITY_FIELD" -f o="$POPT"
+          else
+            gh api graphql -f query='
+              mutation($p:ID!, $i:ID!, $f:ID!) {
+                clearProjectV2ItemFieldValue(input:{
+                  projectId:$p, itemId:$i, fieldId:$f
+                }) { projectV2Item { id } }
+              }' -f p="$PROJECT_ID" -f i="$ITEM" -f f="$PRIORITY_FIELD"
+          fi
+
+          echo "$REPO#$PR (approvals=$NAP changes=$NCH) -> $LABEL"
