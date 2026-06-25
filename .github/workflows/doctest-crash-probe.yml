@@ -1,0 +1,256 @@
+name: LEZ doctest crash probe
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EXPLORATORY / DRAFT — diagnostics only, not a gate. Opt-in: runs only on
+# manual dispatch or when a PR carries the `crash-probe` label.
+#
+# The execution-zone doc-test is intermittently red (~1 in 3 on the GitHub
+# runners). Signature: the module LOADS (daemon reports "status":"loaded"), then
+# on the very next IPC call it reports "status":"not_loaded" and every method
+# fails (RPC_FAILED on macOS / METHOD_FAILED on ubuntu) — even name()/version(),
+# which touch no FFI. So the module SUBPROCESS dies right after load.
+#
+# It does NOT reproduce off the GitHub runners: ~700 module loads + 24 parallel
+# real-doc-test samples on an x86-64 Linux box (the ubuntu-latest arch), under
+# heavy CPU contention and the exact CI command, were all green. So the trigger
+# is specific to the hosted-runner environment and must be captured there.
+#
+# Suspected cause: lssa v0.2.0's wallet_ffi newly links risc0-zkvm +
+# signal-hook-registry + rayon/tokio, whose load-time static-init installs
+# SIGSEGV handlers and spawns threads when the plugin .so is dlopen'd.
+#
+# What this probe captures (verified mechanism: when the module subprocess dies,
+# the host logos_host_qt writes its own backtrace + "Module process crashed" into
+# the daemon logs.txt and status flips to not_loaded — the exact prod signature):
+#   * the daemon logs.txt captured AFTER the failure (the spec only cats it
+#     BEFORE load, so the crash output is otherwise discarded), with
+#     RUST_BACKTRACE=full so a Rust panic also prints a backtrace;
+#   * kernel dmesg tail (OOM / SIGSEGV);
+#   * Linux: a gdb coredump backtrace (apport disabled, core_pattern overridden);
+#   * macOS: the .ips crash report + `log show` (cores rarely materialise for
+#     ad-hoc-signed binaries on macOS, so .ips is the real artifact there).
+#
+# Loops the real doc-test up to ATTEMPTS times, stops at the first failure, and
+# uploads everything as the `lez-crash-<os>` artifact. Re-run to gather more
+# samples if a run comes back green (the flake just didn't fire).
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      attempts:
+        description: "Max doc-test attempts per job (stops at the first failure)"
+        default: "6"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crash-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  crash-probe:
+    name: crash-probe (${{ matrix.os }})
+    # Opt-in only — keeps this diagnostics probe off unrelated PRs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'crash-probe')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      RUST_BACKTRACE: full
+      ATTEMPTS: ${{ github.event.inputs.attempts || '6' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Setup Cachix
+        uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      # Same resolution as doctests.yml: pin the {release} placeholder to the
+      # commit under test (blank for fork PRs, which fall back to master).
+      - name: Resolve commit under test
+        id: commit
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "Fork PR — probing against latest master."
+          else
+            echo "sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enable core dumps
+        shell: bash
+        run: |
+          set -x
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo mkdir -p /tmp/cores && sudo chmod 1777 /tmp/cores
+            # apport silently drops cores from non-dpkg (nix-store) binaries, so
+            # take it out of the loop and point core_pattern at a plain file.
+            sudo systemctl stop apport.service 2>/dev/null || true
+            sudo sysctl -w kernel.core_pattern='/tmp/cores/core.%e.%p.%t'
+            sudo sysctl -w kernel.core_uses_pid=1 || true
+            if ! grep -q '^/tmp/cores/' /proc/sys/kernel/core_pattern; then
+              echo "::warning::core_pattern override did not stick — Linux cores may be unavailable; relying on daemon logs.txt + dmesg."
+            fi
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            # Cores rarely materialise for ad-hoc-signed binaries on macOS; the
+            # .ips crash report (collected later) is the real artifact here.
+            sudo sysctl -w kern.coredump=1 || true
+            sudo mkdir -p /cores && sudo chmod 1777 /cores || true
+          fi
+
+      - name: Loop doc-test until first failure
+        id: loop
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Soft core limit must be raised in THIS shell so the daemon (and the
+          # module subprocess it forks) inherit it. Verified: the limit survives
+          # nix run -> daemon -> fork (the module subprocess shows
+          # "Max core file size  unlimited").
+          ulimit -c unlimited || true
+          # Force the runner's workdir under a known base on BOTH OSes. The
+          # runner uses tempfile.mkdtemp, which honours $TMPDIR; macOS default
+          # $TMPDIR is /var/folders/... (NOT /tmp). --keep-workdir stops the
+          # workdir being deleted on exit, so the daemon logs.txt survives into
+          # the Collect step.
+          export TMPDIR="$RUNNER_TEMP/lez-tmp"
+          mkdir -p "$TMPDIR" crash-out
+          BUDGET=4200   # seconds; stay clear of the 90-min job timeout
+          any_fail=0
+          for i in $(seq 1 "${ATTEMPTS}"); do
+            if [ "$SECONDS" -gt "$BUDGET" ]; then
+              echo "Time budget reached after $((i-1)) attempts; stopping."
+              break
+            fi
+            echo "::group::doc-test attempt $i / ${ATTEMPTS}"
+            if nix run github:logos-co/logos-doctest -- run \
+                 doctests/logos-execution-zone-runtime.test.yaml \
+                 --verbose \
+                 --keep-workdir \
+                 --continue-on-fail \
+                 --release-for logos-execution-zone-module=${{ steps.commit.outputs.sha }} \
+                 --report "crash-out/report-$i.html" 2>&1 | tee "crash-out/run-$i.log"; then
+              echo "attempt $i: PASS"
+            else
+              echo "attempt $i: FAIL — stopping to capture diagnostics"
+              any_fail=1
+              echo "failed_attempt=$i" >> "$GITHUB_OUTPUT"
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+          done
+          echo "any_fail=$any_fail" >> "$GITHUB_OUTPUT"
+
+      - name: Collect crash diagnostics
+        if: always()
+        shell: bash
+        run: |
+          # shellcheck disable=SC2012,SC2086  # intentional ls -t mtime sort + word-split of newline-separated $LOGS (bash 3.2, no mapfile)
+          set +e
+          mkdir -p crash-out
+          SUMMARY=crash-out/capture-summary.txt
+          : > "$SUMMARY"
+
+          echo "=== daemon logs.txt from doc-test workdirs (post-failure) ==="
+          # Workdirs were forced under $RUNNER_TEMP/lez-tmp and kept with
+          # --keep-workdir; the failing attempt is the newest. (bash 3.2 on
+          # macOS — no mapfile; paths under RUNNER_TEMP have no spaces.)
+          LOGS=$(find "$RUNNER_TEMP/lez-tmp" /tmp -name logs.txt -path '*doctest-test-*' 2>/dev/null)
+          if [ -z "$LOGS" ]; then
+            echo "no daemon logs.txt found" | tee -a "$SUMMARY"
+          else
+            for f in $LOGS; do
+              [ -f "$f" ] && cp "$f" "crash-out/daemon-$(echo "$f" | tr '/' '_')"
+            done
+            newest=$(ls -t $LOGS 2>/dev/null | head -1)
+            echo "newest (failing) daemon log: $newest" | tee -a "$SUMMARY"
+            echo "---- $newest ----"
+            cat "$newest"
+            echo "---- crash markers ----"
+            grep -nE 'panicked|Module process crashed|FATAL|SIG[A-Z]|backtrace|not_loaded' "$newest" | head -40 | tee -a "$SUMMARY"
+          fi
+
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            echo "=== dmesg (tail) ==="
+            sudo dmesg --ctime 2>/dev/null | tail -400 > crash-out/dmesg.txt
+            grep -iE 'segfault|general protection|oom|killed process|core dump|traps:' crash-out/dmesg.txt | tail -40 | tee -a "$SUMMARY"
+            echo "=== coredumps ==="
+            ls -la /tmp/cores 2>/dev/null > crash-out/cores-ls.txt
+            coredumpctl list 2>/dev/null > crash-out/coredumpctl.txt
+            core=$(ls -t /tmp/cores/core.* 2>/dev/null | head -1)
+            if [ -n "$core" ]; then
+              echo "core: $core" | tee -a "$SUMMARY"
+              if command -v gdb >/dev/null || sudo apt-get install -y gdb >/dev/null 2>&1; then
+                { echo "core: $core"; gdb -batch -ex 'thread apply all bt' -c "$core" 2>&1; } > crash-out/gdb-bt.txt
+                echo "gdb backtrace written to gdb-bt.txt" | tee -a "$SUMMARY"
+              else
+                echo "::warning::gdb unavailable — core kept but not symbolicated" | tee -a "$SUMMARY"
+              fi
+            else
+              echo "no Linux core (likely a handled signal / clean exit — rely on daemon logs.txt)" | tee -a "$SUMMARY"
+            fi
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            echo "=== macOS crash reports (.ips) ==="
+            USERREP="$HOME/Library/Logs/DiagnosticReports"
+            SYSREP="/Library/Logs/DiagnosticReports"
+            found=0
+            # ReportCrash writes the .ips asynchronously — poll briefly.
+            for _ in $(seq 1 15); do
+              if ls "$USERREP"/*.ips >/dev/null 2>&1 || ls "$SYSREP"/*.ips >/dev/null 2>&1; then found=1; break; fi
+              sleep 2
+            done
+            cp "$USERREP"/*.ips crash-out/ 2>/dev/null
+            sudo cp "$SYSREP"/*.ips crash-out/ 2>/dev/null
+            ls -la "$USERREP" "$SYSREP" 2>/dev/null > crash-out/crashreports-ls.txt
+            if [ "$found" = 1 ]; then
+              echo "captured .ips crash report(s)" | tee -a "$SUMMARY"
+            else
+              echo "no .ips found (ReportCrash may not have fired — rely on daemon logs.txt)" | tee -a "$SUMMARY"
+            fi
+            echo "=== log show (last 5m) ==="
+            log show --last 5m --predicate 'eventMessage CONTAINS "logos_host" OR senderImagePath CONTAINS "wallet_ffi" OR eventMessage CONTAINS "logos_execution_zone"' --info 2>/dev/null | tail -300 > crash-out/log-show.txt
+          fi
+
+          echo "=== crash-out contents ==="
+          ls -la crash-out
+          echo "=== capture summary ==="
+          cat "$SUMMARY"
+
+      - name: Upload crash diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lez-crash-${{ matrix.os }}
+          path: crash-out/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Surface verdict
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.loop.outputs.any_fail }}" = "1" ]; then
+            echo "::warning::Caught a doc-test failure on attempt ${{ steps.loop.outputs.failed_attempt }} of ${ATTEMPTS} — see the lez-crash-${{ matrix.os }} artifact (daemon logs.txt + dmesg + backtrace)."
+            exit 1
+          fi
+          echo "No failure caught in ${ATTEMPTS} attempts — the flake did not fire this run. Re-run the workflow to try again."
