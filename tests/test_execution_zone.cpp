@@ -3,7 +3,9 @@
 
 #include <logos_test.h>
 #include "logos_execution_zone_wallet_module.h"
+#include "mocks/mock_wallet_ffi_capture.h"
 
+#include <cstring>
 #include <string>
 
 #include <nlohmann/json.hpp>
@@ -296,6 +298,78 @@ LOGOS_TEST(transfer_shielded_success_json) {
     LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
 }
 
+// to_keys_json carrying an explicit "identifier" must be forwarded to the FFI call as-is.
+LOGOS_TEST(transfer_shielded_with_identifier_forwards_it_unchanged) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const std::string identifierHex(32, '7'); // 16 bytes of 0x77
+    const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a')
+        + "\",\"identifier\":\"" + identifierHex + "\"}";
+
+    const nlohmann::json obj = parseObject(module.transfer_shielded(VALID_ID, keysJson, VALID_U128));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+
+    uint8_t expected[16];
+    memset(expected, 0x77, sizeof(expected));
+    LOGOS_ASSERT(memcmp(MockWalletFfiCapture::lastTransferShieldedIdentifier, expected, sizeof(expected)) == 0);
+}
+
+// to_keys_json never carries an identifier in practice -> a random, non-zero one must be
+// generated each call (regression guard against reintroducing the old hardcoded-zero identifier).
+LOGOS_TEST(transfer_shielded_without_identifier_uses_random_nonzero_identifier) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + "\"}";
+
+    module.transfer_shielded(VALID_ID, keysJson, VALID_U128);
+    uint8_t first[16];
+    memcpy(first, MockWalletFfiCapture::lastTransferShieldedIdentifier, sizeof(first));
+
+    module.transfer_shielded(VALID_ID, keysJson, VALID_U128);
+    const uint8_t* second = MockWalletFfiCapture::lastTransferShieldedIdentifier;
+
+    uint8_t zero[16] = {0};
+    LOGOS_ASSERT_FALSE(memcmp(first, zero, sizeof(first)) == 0);
+    LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
+}
+
+// transfer_private mirrors transfer_shielded's identifier handling exactly (see above).
+LOGOS_TEST(transfer_private_with_identifier_forwards_it_unchanged) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const std::string identifierHex(32, '7'); // 16 bytes of 0x77
+    const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a')
+        + "\",\"identifier\":\"" + identifierHex + "\"}";
+
+    const nlohmann::json obj = parseObject(module.transfer_private(VALID_ID, keysJson, VALID_U128));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+
+    uint8_t expected[16];
+    memset(expected, 0x77, sizeof(expected));
+    LOGOS_ASSERT(memcmp(MockWalletFfiCapture::lastTransferPrivateIdentifier, expected, sizeof(expected)) == 0);
+}
+
+LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + "\"}";
+
+    module.transfer_private(VALID_ID, keysJson, VALID_U128);
+    uint8_t first[16];
+    memcpy(first, MockWalletFfiCapture::lastTransferPrivateIdentifier, sizeof(first));
+
+    module.transfer_private(VALID_ID, keysJson, VALID_U128);
+    const uint8_t* second = MockWalletFfiCapture::lastTransferPrivateIdentifier;
+
+    uint8_t zero[16] = {0};
+    LOGOS_ASSERT_FALSE(memcmp(first, zero, sizeof(first)) == 0);
+    LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
+}
+
 LOGOS_TEST(register_public_account_invalid_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     LogosExecutionZoneWalletModule module;
@@ -312,6 +386,148 @@ LOGOS_TEST(register_private_account_success_json) {
     const nlohmann::json obj = parseObject(module.register_private_account(VALID_ID));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_register_private_account"));
     LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+}
+
+// ============================================================================
+// Bridge (L1 Bedrock <-> L2)
+// ============================================================================
+
+LOGOS_TEST(bridge_withdraw_success_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.bridge_withdraw(VALID_ID, VALID_ID_2, 100));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_bridge_withdraw"));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+    LOGOS_ASSERT_EQ(obj["tx_hash"].get<std::string>(), std::string("0xmocktxhash"));
+    LOGOS_ASSERT_TRUE(obj["error"].get<std::string>().empty());
+}
+
+LOGOS_TEST(bridge_withdraw_invalid_hex_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.bridge_withdraw("bad", VALID_ID_2, 100));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_bridge_withdraw"));
+}
+
+LOGOS_TEST(bridge_withdraw_ffi_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("wallet_ffi_bridge_withdraw").returns(static_cast<int>(INTERNAL_ERROR));
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.bridge_withdraw(VALID_ID, VALID_ID_2, 100));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+}
+
+// ============================================================================
+// Vault claiming
+// ============================================================================
+
+LOGOS_TEST(get_vault_balance_invalid_hex_returns_empty) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    LOGOS_ASSERT_TRUE(module.get_vault_balance("not-hex").empty());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_vault_balance"));
+}
+
+LOGOS_TEST(get_vault_balance_returns_decimal_string) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("get_vault_balance_value").returns(42);
+    LogosExecutionZoneWalletModule module;
+
+    const std::string balance = module.get_vault_balance(VALID_ID);
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_vault_balance"));
+    LOGOS_ASSERT_EQ(balance, std::string("42"));
+}
+
+LOGOS_TEST(get_vault_balance_ffi_error_returns_empty) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("wallet_ffi_get_vault_balance").returns(static_cast<int>(INTERNAL_ERROR));
+    LogosExecutionZoneWalletModule module;
+
+    LOGOS_ASSERT_TRUE(module.get_vault_balance(VALID_ID).empty());
+}
+
+LOGOS_TEST(vault_claim_success_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, VALID_U128));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_vault_claim"));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+    LOGOS_ASSERT_EQ(obj["tx_hash"].get<std::string>(), std::string("0xmocktxhash"));
+    LOGOS_ASSERT_TRUE(obj["error"].get<std::string>().empty());
+}
+
+LOGOS_TEST(vault_claim_invalid_hex_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim("bad", VALID_U128));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_vault_claim"));
+}
+
+LOGOS_TEST(vault_claim_invalid_amount_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, "ff"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_CONTAINS(obj["error"].get<std::string>(), std::string("amount"));
+}
+
+LOGOS_TEST(vault_claim_ffi_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("wallet_ffi_vault_claim").returns(static_cast<int>(INTERNAL_ERROR));
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, VALID_U128));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+}
+
+LOGOS_TEST(vault_claim_private_success_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, VALID_U128));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_vault_claim_private"));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+}
+
+LOGOS_TEST(vault_claim_private_invalid_hex_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim_private("bad", VALID_U128));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_vault_claim_private"));
+}
+
+LOGOS_TEST(vault_claim_private_invalid_amount_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, "ff"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_CONTAINS(obj["error"].get<std::string>(), std::string("amount"));
+}
+
+LOGOS_TEST(vault_claim_private_ffi_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("wallet_ffi_vault_claim_private").returns(static_cast<int>(INTERNAL_ERROR));
+    LogosExecutionZoneWalletModule module;
+
+    const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, VALID_U128));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
 }
 
 // ============================================================================

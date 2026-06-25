@@ -36,6 +36,11 @@ typedef struct FfiBytes16 {
     uint8_t data[16];
 } FfiBytes16;
 
+// 16-byte little-endian u128 (e.g. a private account identifier).
+typedef struct FfiU128 {
+    uint8_t data[16];
+} FfiU128;
+
 // Full account record.
 typedef struct FfiAccount {
     FfiBytes32 program_owner;
@@ -89,13 +94,6 @@ typedef enum FfiAccountIdentityKind {
   PRIVATE_SHARED = 7,
   PRIVATE_PDA_SHARED = 8,
 } FfiAccountIdentityKind;
-
-/**
- * U128 - 16 bytes little endian.
- */
-typedef struct FfiU128 {
-  uint8_t data[16];
-} FfiU128;
 
 typedef struct FfiInstructionWords {
   uint32_t *instruction_words;
@@ -236,7 +234,7 @@ WalletFfiError wallet_ffi_transfer_public(
 WalletFfiError wallet_ffi_transfer_shielded(
     WalletHandle* handle, const FfiBytes32* from, const FfiPrivateAccountKeys* to_keys,
     const FfiU128 *to_identifier,
-    const uint8_t (*amount)[16], 
+    const uint8_t (*amount)[16],
     const char *key_path,
     FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_deshielded(
@@ -248,7 +246,7 @@ WalletFfiError wallet_ffi_transfer_private(
     const uint8_t (*amount)[16], FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_shielded_owned(
     WalletHandle* handle, const FfiBytes32* from, const FfiBytes32* to,
-    const uint8_t (*amount)[16], 
+    const uint8_t (*amount)[16],
     const char *key_path,
     FfiTransferResult* out_result);
 WalletFfiError wallet_ffi_transfer_private_owned(
@@ -295,6 +293,20 @@ void wallet_ffi_free_account_identity(FfiAccountIdentity *account_identity);
 void wallet_ffi_free_transfer_result(FfiTransferResult* result);
 void wallet_ffi_free_transaction_result(FfiTransactionResult *result);
 void wallet_ffi_free_ffi_program(FfiProgram *ffi_program);
+
+// === Bridge (L1 Bedrock <-> L2) ===
+
+WalletFfiError wallet_ffi_bridge_withdraw(
+    WalletHandle* handle, const FfiBytes32* from, uint64_t amount,
+    const FfiBytes32* bedrock_account_pk, FfiTransferResult* out_result);
+
+// === Vault claiming ===
+
+WalletFfiError wallet_ffi_get_vault_balance(WalletHandle* handle, const FfiBytes32* owner, uint8_t (*out_balance)[16]);
+WalletFfiError wallet_ffi_vault_claim(
+    WalletHandle* handle, const FfiBytes32* owner, const uint8_t (*amount)[16], FfiTransferResult* out_result);
+WalletFfiError wallet_ffi_vault_claim_private(
+    WalletHandle* handle, const FfiBytes32* owner, const uint8_t (*amount)[16], FfiTransferResult* out_result);
 
 // === Configuration ===
 
