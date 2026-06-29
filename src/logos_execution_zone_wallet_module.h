@@ -77,13 +77,7 @@ public:
     std::vector<uint8_t> amm_elf();
     std::vector<uint8_t> ata_elf();
 
-    std::string send_generic_public_transaction(
-        const std::vector<std::string>& account_ids,
-        const std::vector<bool>& signing_requirements,
-        const std::vector<uint32_t>& instruction,
-        const std::vector<uint8_t>& program_elf,
-        const std::vector<std::vector<uint8_t>>& program_dependencies
-    );
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint32_t>& instruction, const std::string& program_id_hex);
     std::string send_generic_private_transaction(
         const std::vector<std::string>& account_ids,
         const std::vector<uint32_t>& instruction,
