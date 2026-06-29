@@ -31,6 +31,11 @@ typedef struct FfiBytes32 {
     uint8_t data[32];
 } FfiBytes32;
 
+// Program ID - 8 u32 values (32 bytes total).
+typedef struct FfiProgramId {
+    uint32_t data[8];
+} FfiProgramId;
+
 // 16-byte value (balance / nonce, little-endian u128).
 typedef struct FfiBytes16 {
     uint8_t data[16];
@@ -43,7 +48,7 @@ typedef struct FfiU128 {
 
 // Full account record.
 typedef struct FfiAccount {
-    FfiBytes32 program_owner;
+    FfiProgramId program_owner;
     FfiBytes16 balance;
     FfiBytes16 nonce;
     uint8_t* data;
@@ -266,7 +271,7 @@ WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle,
                                                                uintptr_t account_identities_size,
                                                                const uint32_t *instruction_words,
                                                                uintptr_t instruction_words_size,
-                                                               const FfiProgramWithDependencies *program_with_dependencies,
+                                                               FfiProgramId program_id,
                                                                FfiTransactionResult *out_result);
 
 WalletFfiError wallet_ffi_send_generic_private_transaction(WalletHandle *handle,

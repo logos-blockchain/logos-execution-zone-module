@@ -472,7 +472,7 @@ void wallet_ffi_free_ffi_program(FfiProgram *ffi_program) {
 
 WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle, const FfiAccountIdentity *account_identities,
 uintptr_t account_identities_size, const uint32_t *instruction_words, uintptr_t instruction_words_size,
-const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResult *out_result) {
+FfiProgramId program_id, FfiTransactionResult *out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_public_transaction");
     return fillTransactionResult("wallet_ffi_send_generic_public_transaction", out_result);
 }

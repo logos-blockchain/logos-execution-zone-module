@@ -969,10 +969,9 @@ std::vector<uint8_t> LogosExecutionZoneWalletModule::authenticated_transfer_elf(
 
 std::string LogosExecutionZoneWalletModule::send_generic_public_transaction(
         const std::vector<std::string>& account_ids,
-        const std::vector<bool>& signing_requirements, 
+        const std::vector<bool>& signing_requirements,
         const std::vector<uint32_t>& instruction,
-        const std::vector<uint8_t>& program_elf,
-        const std::vector<std::vector<uint8_t>>& program_dependencies
+        const std::string& program_id_hex
 ) {
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
@@ -1000,47 +999,23 @@ std::string LogosExecutionZoneWalletModule::send_generic_public_transaction(
     const uint32_t* input_instruction_data = instruction.data();
     uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
 
-    FfiProgram main_program {};
-
-    const uint8_t *program_elf_data = program_elf.data();
-    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
-
-    main_program.elf_data = program_elf_data;
-    main_program.elf_size = program_elf_size;
-
-    std::vector<FfiProgram> ffi_program_dependencies;
-    ffi_program_dependencies.reserve(program_dependencies.size());
-
-    for (int i = 0; i < program_dependencies.size(); ++i) {
-        FfiProgram program{};
-
-        const uint8_t *program_elf_data = program_dependencies[i].data();
-        uintptr_t program_elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
-
-        program.elf_data = program_elf_data;
-        program.elf_size = program_elf_size;
-
-        ffi_program_dependencies.push_back(program);
+    std::vector<uint8_t> program_id_bytes;
+    if (!hexToBytes(program_id_hex, program_id_bytes, 32)) {
+        fprintf(stderr, "send_generic_public_transaction: invalid program_id_hex");
+        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: invalid program_id_hex"));
     }
-
-    const FfiProgram *dependencies_data = ffi_program_dependencies.data();
-    uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
-
-    FfiProgramWithDependencies program_with_dependencies {};
-
-    program_with_dependencies.program = main_program;
-    program_with_dependencies.deps = dependencies_data;
-    program_with_dependencies.deps_size = dependencies_size;
+    FfiProgramId program_id{};
+    memcpy(program_id.data, program_id_bytes.data(), 32);
 
     FfiTransactionResult result {};
 
     const WalletFfiError error = wallet_ffi_send_generic_public_transaction(
-        walletHandle, 
+        walletHandle,
         account_identities,
         account_identities_size,
-        input_instruction_data, 
+        input_instruction_data,
         input_instruction_data_size,
-        &program_with_dependencies,
+        program_id,
         &result
     );
 
