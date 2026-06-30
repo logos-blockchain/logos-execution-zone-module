@@ -1,4 +1,4 @@
-#include "logos_execution_zone_wallet_module.h"
+#include "lez_core_module.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -263,26 +263,26 @@ bool jsonArrayHexToSiblings32(const std::string& json_array_str, std::vector<uin
 
 } // namespace
 
-LogosExecutionZoneWalletModule::LogosExecutionZoneWalletModule() = default;
+LEZCoreModule::LEZCoreModule() = default;
 
-LogosExecutionZoneWalletModule::~LogosExecutionZoneWalletModule() {
+LEZCoreModule::~LEZCoreModule() {
     if (walletHandle) {
         wallet_ffi_destroy(walletHandle);
         walletHandle = nullptr;
     }
 }
 
-std::string LogosExecutionZoneWalletModule::name() const {
-    return "logos_execution_zone";
+std::string LEZCoreModule::name() const {
+    return "lez_core";
 }
 
-std::string LogosExecutionZoneWalletModule::version() const {
-    return "1.0.0";
+std::string LEZCoreModule::version() const {
+    return "0.2.0";
 }
 
 // === Account Management ===
 
-std::string LogosExecutionZoneWalletModule::create_account_public() {
+std::string LEZCoreModule::create_account_public() {
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_create_account_public(walletHandle, &id);
     if (error != SUCCESS) {
@@ -292,7 +292,7 @@ std::string LogosExecutionZoneWalletModule::create_account_public() {
     return bytes32ToHex(id);
 }
 
-std::string LogosExecutionZoneWalletModule::create_account_private() {
+std::string LEZCoreModule::create_account_private() {
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_create_account_private(walletHandle, &id);
     if (error != SUCCESS) {
@@ -302,7 +302,7 @@ std::string LogosExecutionZoneWalletModule::create_account_private() {
     return bytes32ToHex(id);
 }
 
-LogosList LogosExecutionZoneWalletModule::list_accounts() {
+LogosList LEZCoreModule::list_accounts() {
     LogosList result = nlohmann::json::array();
     FfiAccountList list{};
     const WalletFfiError error = wallet_ffi_list_accounts(walletHandle, &list);
@@ -319,7 +319,7 @@ LogosList LogosExecutionZoneWalletModule::list_accounts() {
 
 // === Account Queries ===
 
-std::string LogosExecutionZoneWalletModule::get_balance(const std::string& account_id_hex, const bool is_public) {
+std::string LEZCoreModule::get_balance(const std::string& account_id_hex, const bool is_public) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "get_balance: invalid account_id_hex\n");
@@ -336,7 +336,7 @@ std::string LogosExecutionZoneWalletModule::get_balance(const std::string& accou
     return balanceLe16ToDecimalString(balance);
 }
 
-std::string LogosExecutionZoneWalletModule::get_account_public(const std::string& account_id_hex) {
+std::string LEZCoreModule::get_account_public(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "get_account_public: invalid account_id_hex\n");
@@ -353,7 +353,7 @@ std::string LogosExecutionZoneWalletModule::get_account_public(const std::string
     return result;
 }
 
-std::string LogosExecutionZoneWalletModule::get_account_private(const std::string& account_id_hex) {
+std::string LEZCoreModule::get_account_private(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "get_account_private: invalid account_id_hex\n");
@@ -370,7 +370,7 @@ std::string LogosExecutionZoneWalletModule::get_account_private(const std::strin
     return result;
 }
 
-std::string LogosExecutionZoneWalletModule::get_public_account_key(const std::string& account_id_hex) {
+std::string LEZCoreModule::get_public_account_key(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "get_public_account_key: invalid account_id_hex\n");
@@ -385,7 +385,7 @@ std::string LogosExecutionZoneWalletModule::get_public_account_key(const std::st
     return bytes32ToHex(key.public_key);
 }
 
-std::string LogosExecutionZoneWalletModule::get_private_account_keys(const std::string& account_id_hex) {
+std::string LEZCoreModule::get_private_account_keys(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "get_private_account_keys: invalid account_id_hex\n");
@@ -409,7 +409,7 @@ std::string LogosExecutionZoneWalletModule::get_private_account_keys(const std::
 
 // === Account Encoding ===
 
-std::string LogosExecutionZoneWalletModule::account_id_to_base58(const std::string& account_id_hex) {
+std::string LEZCoreModule::account_id_to_base58(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "account_id_to_base58: invalid account_id_hex\n");
@@ -427,7 +427,7 @@ std::string LogosExecutionZoneWalletModule::account_id_to_base58(const std::stri
     return value;
 }
 
-std::string LogosExecutionZoneWalletModule::account_id_from_base58(const std::string& base58_str) {
+std::string LEZCoreModule::account_id_from_base58(const std::string& base58_str) {
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_account_id_from_base58(base58_str.c_str(), &id);
     if (error != SUCCESS) {
@@ -439,11 +439,11 @@ std::string LogosExecutionZoneWalletModule::account_id_from_base58(const std::st
 
 // === Blockchain Synchronisation ===
 
-int64_t LogosExecutionZoneWalletModule::sync_to_block(const int64_t block_id) {
+int64_t LEZCoreModule::sync_to_block(const int64_t block_id) {
     return wallet_ffi_sync_to_block(walletHandle, static_cast<uint64_t>(block_id));
 }
 
-int64_t LogosExecutionZoneWalletModule::get_last_synced_block() {
+int64_t LEZCoreModule::get_last_synced_block() {
     uint64_t block_id = 0;
     const WalletFfiError error = wallet_ffi_get_last_synced_block(walletHandle, &block_id);
     if (error != SUCCESS) {
@@ -453,7 +453,7 @@ int64_t LogosExecutionZoneWalletModule::get_last_synced_block() {
     return static_cast<int64_t>(block_id);
 }
 
-int64_t LogosExecutionZoneWalletModule::get_current_block_height() {
+int64_t LEZCoreModule::get_current_block_height() {
     uint64_t block_height = 0;
     const WalletFfiError error = wallet_ffi_get_current_block_height(walletHandle, &block_height);
     if (error != SUCCESS) {
@@ -465,7 +465,7 @@ int64_t LogosExecutionZoneWalletModule::get_current_block_height() {
 
 // === Pinata claiming ===
 
-std::string LogosExecutionZoneWalletModule::claim_pinata(
+std::string LEZCoreModule::claim_pinata(
     const std::string& pinata_account_id_hex,
     const std::string& winner_account_id_hex,
     const std::string& solution_le16_hex
@@ -491,7 +491,7 @@ std::string LogosExecutionZoneWalletModule::claim_pinata(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::claim_pinata_private_owned_already_initialized(
+std::string LEZCoreModule::claim_pinata_private_owned_already_initialized(
     const std::string& pinata_account_id_hex,
     const std::string& winner_account_id_hex,
     const std::string& solution_le16_hex,
@@ -541,7 +541,7 @@ std::string LogosExecutionZoneWalletModule::claim_pinata_private_owned_already_i
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::claim_pinata_private_owned_not_initialized(
+std::string LEZCoreModule::claim_pinata_private_owned_not_initialized(
     const std::string& pinata_account_id_hex,
     const std::string& winner_account_id_hex,
     const std::string& solution_le16_hex
@@ -575,7 +575,7 @@ std::string LogosExecutionZoneWalletModule::claim_pinata_private_owned_not_initi
 
 // === Operations ===
 
-std::string LogosExecutionZoneWalletModule::transfer_public(
+std::string LEZCoreModule::transfer_public(
     const std::string& from_hex,
     const std::string& to_hex,
     const std::string& amount_le16_hex
@@ -603,7 +603,7 @@ std::string LogosExecutionZoneWalletModule::transfer_public(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::transfer_shielded(
+std::string LEZCoreModule::transfer_shielded(
     const std::string& from_hex,
     const std::string& to_keys_json,
     const std::string& amount_le16_hex
@@ -648,7 +648,7 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::transfer_deshielded(
+std::string LEZCoreModule::transfer_deshielded(
     const std::string& from_hex,
     const std::string& to_hex,
     const std::string& amount_le16_hex
@@ -676,7 +676,7 @@ std::string LogosExecutionZoneWalletModule::transfer_deshielded(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::transfer_private(
+std::string LEZCoreModule::transfer_private(
     const std::string& from_hex,
     const std::string& to_keys_json,
     const std::string& amount_le16_hex
@@ -717,7 +717,7 @@ std::string LogosExecutionZoneWalletModule::transfer_private(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::transfer_shielded_owned(
+std::string LEZCoreModule::transfer_shielded_owned(
     const std::string& from_hex,
     const std::string& to_hex,
     const std::string& amount_le16_hex
@@ -748,7 +748,7 @@ std::string LogosExecutionZoneWalletModule::transfer_shielded_owned(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::transfer_private_owned(
+std::string LEZCoreModule::transfer_private_owned(
     const std::string& from_hex,
     const std::string& to_hex,
     const std::string& amount_le16_hex
@@ -776,7 +776,7 @@ std::string LogosExecutionZoneWalletModule::transfer_private_owned(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::register_public_account(const std::string& account_id_hex) {
+std::string LEZCoreModule::register_public_account(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "register_public_account: invalid account_id_hex\n");
@@ -795,7 +795,7 @@ std::string LogosExecutionZoneWalletModule::register_public_account(const std::s
 
 // === Bridge (L1 Bedrock <-> L2) ===
 
-std::string LogosExecutionZoneWalletModule::bridge_withdraw(
+std::string LEZCoreModule::bridge_withdraw(
     const std::string& from_hex,
     const std::string& bedrock_account_pk_hex,
     const uint64_t amount
@@ -820,7 +820,7 @@ std::string LogosExecutionZoneWalletModule::bridge_withdraw(
 
 // === Vault claiming ===
 
-std::string LogosExecutionZoneWalletModule::get_vault_balance(const std::string& owner_account_id_hex) {
+std::string LEZCoreModule::get_vault_balance(const std::string& owner_account_id_hex) {
     FfiBytes32 ownerId{};
     if (!hexToBytes32(owner_account_id_hex, &ownerId)) {
         fprintf(stderr, "get_vault_balance: invalid owner_account_id_hex\n");
@@ -836,7 +836,7 @@ std::string LogosExecutionZoneWalletModule::get_vault_balance(const std::string&
     return balanceLe16ToDecimalString(balance);
 }
 
-std::string LogosExecutionZoneWalletModule::vault_claim(
+std::string LEZCoreModule::vault_claim(
     const std::string& owner_account_id_hex,
     const std::string& amount_le16_hex
 ) {
@@ -863,7 +863,7 @@ std::string LogosExecutionZoneWalletModule::vault_claim(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::vault_claim_private(
+std::string LEZCoreModule::vault_claim_private(
     const std::string& owner_account_id_hex,
     const std::string& amount_le16_hex
 ) {
@@ -890,7 +890,7 @@ std::string LogosExecutionZoneWalletModule::vault_claim_private(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::register_private_account(const std::string& account_id_hex) {
+std::string LEZCoreModule::register_private_account(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "register_private_account: invalid account_id_hex\n");
@@ -907,7 +907,7 @@ std::string LogosExecutionZoneWalletModule::register_private_account(const std::
     return resultJson;
 }
 
-std::vector<uint8_t> LogosExecutionZoneWalletModule::token_elf() {
+std::vector<uint8_t> LEZCoreModule::token_elf() {
     FfiProgram ffi_program{};
     WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
     if (error != SUCCESS) {
@@ -922,7 +922,7 @@ std::vector<uint8_t> LogosExecutionZoneWalletModule::token_elf() {
     return result;
 }
 
-std::vector<uint8_t> LogosExecutionZoneWalletModule::amm_elf() {
+std::vector<uint8_t> LEZCoreModule::amm_elf() {
     FfiProgram ffi_program{};
     WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
     if (error != SUCCESS) {
@@ -937,7 +937,7 @@ std::vector<uint8_t> LogosExecutionZoneWalletModule::amm_elf() {
     return result;
 }
 
-std::vector<uint8_t> LogosExecutionZoneWalletModule::ata_elf() {
+std::vector<uint8_t> LEZCoreModule::ata_elf() {
     FfiProgram ffi_program{};
     WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
     if (error != SUCCESS) {
@@ -952,7 +952,7 @@ std::vector<uint8_t> LogosExecutionZoneWalletModule::ata_elf() {
     return result;
 }
 
-std::vector<uint8_t> LogosExecutionZoneWalletModule::authenticated_transfer_elf() {
+std::vector<uint8_t> LEZCoreModule::authenticated_transfer_elf() {
     FfiProgram ffi_program{};
     WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
     if (error != SUCCESS) {
@@ -967,7 +967,7 @@ std::vector<uint8_t> LogosExecutionZoneWalletModule::authenticated_transfer_elf(
     return result;
 }
 
-std::string LogosExecutionZoneWalletModule::send_generic_public_transaction(
+std::string LEZCoreModule::send_generic_public_transaction(
         const std::vector<std::string>& account_ids,
         const std::vector<bool>& signing_requirements,
         const std::vector<uint32_t>& instruction,
@@ -1032,7 +1032,7 @@ std::string LogosExecutionZoneWalletModule::send_generic_public_transaction(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::send_generic_private_transaction(
+std::string LEZCoreModule::send_generic_private_transaction(
         const std::vector<std::string>& account_ids,
         const std::vector<uint32_t>& instruction,
         const std::vector<uint8_t>& program_elf,
@@ -1121,7 +1121,7 @@ std::string LogosExecutionZoneWalletModule::send_generic_private_transaction(
     return resultJson;
 }
 
-std::string LogosExecutionZoneWalletModule::send_program_deployment_transaction(
+std::string LEZCoreModule::send_program_deployment_transaction(
         const std::vector<uint8_t>& program_elf
 ) {
     FfiTransactionResult result {};
@@ -1147,7 +1147,7 @@ std::string LogosExecutionZoneWalletModule::send_program_deployment_transaction(
 
 // === Wallet Lifecycle ===
 
-std::string LogosExecutionZoneWalletModule::create_new(
+std::string LEZCoreModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
     const std::string& password
@@ -1171,7 +1171,7 @@ std::string LogosExecutionZoneWalletModule::create_new(
     return mnemonic;
 }
 
-int64_t LogosExecutionZoneWalletModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
+int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
     const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
     if (error != SUCCESS) {
         fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
@@ -1181,7 +1181,7 @@ int64_t LogosExecutionZoneWalletModule::restore_storage(const std::string& mnemo
     return SUCCESS;
 }
 
-int64_t LogosExecutionZoneWalletModule::open(const std::string& config_path, const std::string& storage_path) {
+int64_t LEZCoreModule::open(const std::string& config_path, const std::string& storage_path) {
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
         return INTERNAL_ERROR;
@@ -1196,13 +1196,13 @@ int64_t LogosExecutionZoneWalletModule::open(const std::string& config_path, con
     return SUCCESS;
 }
 
-int64_t LogosExecutionZoneWalletModule::save() {
+int64_t LEZCoreModule::save() {
     return wallet_ffi_save(walletHandle);
 }
 
 // === Configuration ===
 
-std::string LogosExecutionZoneWalletModule::get_sequencer_addr() {
+std::string LEZCoreModule::get_sequencer_addr() {
     char* addr = wallet_ffi_get_sequencer_addr(walletHandle);
     if (!addr) {
         fprintf(stderr, "get_sequencer_addr: wallet_ffi returned null\n");

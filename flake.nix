@@ -1,5 +1,5 @@
 {
-  description = "Logos Execution Zone Wallet Module";
+  description = "Logos Execution Zone Core Module";
 
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";

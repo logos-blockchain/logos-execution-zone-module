@@ -1,4 +1,4 @@
-# Logos Blockchain Module
+# Logos Execution Zone Core Module
 
 ### Setup
 

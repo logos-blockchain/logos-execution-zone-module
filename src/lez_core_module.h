@@ -1,5 +1,5 @@
-#ifndef LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
-#define LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
+#ifndef LEZ_CORE_MODULE_H
+#define LEZ_CORE_MODULE_H
 
 #include <cstdint>
 #include <string>
@@ -10,7 +10,7 @@ extern "C" {
 #include <wallet_ffi.h>
 }
 
-// Universal (Qt-free) execution-zone wallet module. The Qt glue (provider
+// Universal (Qt-free) execution-zone core module. The Qt glue (provider
 // object + plugin) is generated from this header by logos-cpp-generator, which
 // maps the std return types below to the Qt signatures callers invoke:
 //   std::string -> QString, int64_t -> int, LogosList -> QVariantList.
@@ -18,13 +18,13 @@ extern "C" {
 // NOTE: the generator parses this header line-by-line and only recognises a
 // method when its declaration ends with ';' on a single line. Keep every
 // method declaration on ONE line — multi-line signatures are silently dropped.
-class LogosExecutionZoneWalletModule {
+class LEZCoreModule {
 public:
-    LogosExecutionZoneWalletModule();
-    ~LogosExecutionZoneWalletModule();
+    LEZCoreModule();
+    ~LEZCoreModule();
 
-    LogosExecutionZoneWalletModule(const LogosExecutionZoneWalletModule&) = delete;
-    LogosExecutionZoneWalletModule& operator=(const LogosExecutionZoneWalletModule&) = delete;
+    LEZCoreModule(const LEZCoreModule&) = delete;
+    LEZCoreModule& operator=(const LEZCoreModule&) = delete;
 
     std::string name() const;
     std::string version() const;
@@ -78,15 +78,8 @@ public:
     std::vector<uint8_t> ata_elf();
 
     std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint32_t>& instruction, const std::string& program_id_hex);
-    std::string send_generic_private_transaction(
-        const std::vector<std::string>& account_ids,
-        const std::vector<uint32_t>& instruction,
-        const std::vector<uint8_t>& program_elf,
-        const std::vector<std::vector<uint8_t>>& program_dependencies
-    );
-    std::string send_program_deployment_transaction(
-        const std::vector<uint8_t>& program_elf
-    );
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint32_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    std::string send_program_deployment_transaction(const std::vector<uint8_t>& program_elf);
 
     // === Bridge (L1 Bedrock <-> L2) ===
     std::string bridge_withdraw(const std::string& from_hex, const std::string& bedrock_account_pk_hex, uint64_t amount);
@@ -103,4 +96,4 @@ private:
     WalletHandle* walletHandle = nullptr;
 };
 
-#endif // LOGOS_EXECUTION_ZONE_WALLET_MODULE_H
+#endif // LEZ_CORE_MODULE_H
