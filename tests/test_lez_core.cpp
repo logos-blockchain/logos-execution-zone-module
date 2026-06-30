@@ -1,8 +1,8 @@
-// Unit tests for LogosExecutionZoneWalletModule.
+// Unit tests for LEZCoreModule.
 // All wallet_ffi C functions are mocked at link time via mock_wallet_ffi.cpp.
 
 #include <logos_test.h>
-#include "logos_execution_zone_wallet_module.h"
+#include "lez_core_module.h"
 #include "mocks/mock_wallet_ffi_capture.h"
 
 #include <cstring>
@@ -27,7 +27,7 @@ static nlohmann::json parseObject(const std::string& json) {
 // ============================================================================
 
 LOGOS_TEST(name_and_version) {
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
     LOGOS_ASSERT_EQ(module.name(), std::string("logos_execution_zone"));
     LOGOS_ASSERT_EQ(module.version(), std::string("1.0.0"));
 }
@@ -38,7 +38,7 @@ LOGOS_TEST(name_and_version) {
 
 LOGOS_TEST(create_account_public_returns_hex_on_success) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string id = module.create_account_public();
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_account_public"));
@@ -51,14 +51,14 @@ LOGOS_TEST(create_account_public_returns_hex_on_success) {
 LOGOS_TEST(create_account_public_returns_empty_on_error) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_create_account_public").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.create_account_public().empty());
 }
 
 LOGOS_TEST(create_account_private_returns_hex_on_success) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string id = module.create_account_private();
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_account_private"));
@@ -70,7 +70,7 @@ LOGOS_TEST(create_account_private_returns_hex_on_success) {
 LOGOS_TEST(list_accounts_maps_entries) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("list_accounts_count").returns(3);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const LogosList accounts = module.list_accounts();
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_list_accounts"));
@@ -87,7 +87,7 @@ LOGOS_TEST(list_accounts_maps_entries) {
 LOGOS_TEST(list_accounts_empty_on_error) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_list_accounts").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(static_cast<int>(module.list_accounts().size()), 0);
 }
@@ -98,7 +98,7 @@ LOGOS_TEST(list_accounts_empty_on_error) {
 
 LOGOS_TEST(get_balance_invalid_hex_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.get_balance("not-hex", true).empty());
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_balance"));
@@ -107,7 +107,7 @@ LOGOS_TEST(get_balance_invalid_hex_returns_empty) {
 LOGOS_TEST(get_balance_returns_decimal_string) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("get_balance_value").returns(123456789);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string balance = module.get_balance(VALID_ID, true);
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_balance"));
@@ -117,14 +117,14 @@ LOGOS_TEST(get_balance_returns_decimal_string) {
 LOGOS_TEST(get_balance_zero) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("get_balance_value").returns(0);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.get_balance(VALID_ID, false), std::string("0"));
 }
 
 LOGOS_TEST(get_account_public_returns_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.get_account_public(VALID_ID));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_account_public"));
@@ -136,7 +136,7 @@ LOGOS_TEST(get_account_public_returns_json) {
 
 LOGOS_TEST(get_account_public_invalid_hex_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.get_account_public("zz").empty());
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_account_public"));
@@ -144,7 +144,7 @@ LOGOS_TEST(get_account_public_invalid_hex_returns_empty) {
 
 LOGOS_TEST(get_public_account_key_returns_hex) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     std::string expected;
     for (int i = 0; i < 32; ++i) expected += "be";
@@ -153,7 +153,7 @@ LOGOS_TEST(get_public_account_key_returns_hex) {
 
 LOGOS_TEST(get_private_account_keys_returns_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.get_private_account_keys(VALID_ID));
     std::string expected;
@@ -167,7 +167,7 @@ LOGOS_TEST(get_private_account_keys_returns_json) {
 
 LOGOS_TEST(account_id_to_base58_invalid_hex_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.account_id_to_base58("xyz").empty());
 }
@@ -175,14 +175,14 @@ LOGOS_TEST(account_id_to_base58_invalid_hex_returns_empty) {
 LOGOS_TEST(account_id_to_base58_returns_string) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_account_id_to_base58").returns("SomeBase58Value");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.account_id_to_base58(VALID_ID), std::string("SomeBase58Value"));
 }
 
 LOGOS_TEST(account_id_from_base58_returns_hex) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     std::string expected;
     for (int i = 0; i < 32; ++i) expected += "5a";
@@ -192,7 +192,7 @@ LOGOS_TEST(account_id_from_base58_returns_hex) {
 LOGOS_TEST(account_id_from_base58_error_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_account_id_from_base58").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.account_id_from_base58("anything").empty());
 }
@@ -204,7 +204,7 @@ LOGOS_TEST(account_id_from_base58_error_returns_empty) {
 LOGOS_TEST(sync_to_block_forwards_value) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_sync_to_block").returns(7);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.sync_to_block(100), static_cast<int64_t>(7));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_sync_to_block"));
@@ -213,7 +213,7 @@ LOGOS_TEST(sync_to_block_forwards_value) {
 LOGOS_TEST(get_last_synced_block_returns_value) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("last_synced_block_value").returns(55);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.get_last_synced_block(), static_cast<int64_t>(55));
 }
@@ -221,7 +221,7 @@ LOGOS_TEST(get_last_synced_block_returns_value) {
 LOGOS_TEST(get_last_synced_block_error_returns_zero) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_get_last_synced_block").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.get_last_synced_block(), static_cast<int64_t>(0));
 }
@@ -229,7 +229,7 @@ LOGOS_TEST(get_last_synced_block_error_returns_zero) {
 LOGOS_TEST(get_current_block_height_returns_value) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("current_block_height_value").returns(999);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.get_current_block_height(), static_cast<int64_t>(999));
 }
@@ -240,7 +240,7 @@ LOGOS_TEST(get_current_block_height_returns_value) {
 
 LOGOS_TEST(transfer_public_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.transfer_public(VALID_ID, VALID_ID_2, VALID_U128));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_transfer_public"));
@@ -251,7 +251,7 @@ LOGOS_TEST(transfer_public_success_json) {
 
 LOGOS_TEST(transfer_public_invalid_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.transfer_public("bad", VALID_ID_2, VALID_U128));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -261,7 +261,7 @@ LOGOS_TEST(transfer_public_invalid_hex_error_json) {
 
 LOGOS_TEST(transfer_public_invalid_amount_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.transfer_public(VALID_ID, VALID_ID_2, "ff"));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -271,7 +271,7 @@ LOGOS_TEST(transfer_public_invalid_amount_error_json) {
 LOGOS_TEST(transfer_public_ffi_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_transfer_public").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.transfer_public(VALID_ID, VALID_ID_2, VALID_U128));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -280,7 +280,7 @@ LOGOS_TEST(transfer_public_ffi_error_json) {
 
 LOGOS_TEST(transfer_shielded_invalid_keys_json_error) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     // to_keys_json is not valid JSON object -> parse failure.
     const nlohmann::json obj = parseObject(module.transfer_shielded(VALID_ID, "not-json", VALID_U128));
@@ -290,7 +290,7 @@ LOGOS_TEST(transfer_shielded_invalid_keys_json_error) {
 
 LOGOS_TEST(transfer_shielded_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + std::string("\"}");
     const nlohmann::json obj = parseObject(module.transfer_shielded(VALID_ID, keysJson, VALID_U128));
@@ -301,7 +301,7 @@ LOGOS_TEST(transfer_shielded_success_json) {
 // to_keys_json carrying an explicit "identifier" must be forwarded to the FFI call as-is.
 LOGOS_TEST(transfer_shielded_with_identifier_forwards_it_unchanged) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string identifierHex(32, '7'); // 16 bytes of 0x77
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a')
@@ -319,7 +319,7 @@ LOGOS_TEST(transfer_shielded_with_identifier_forwards_it_unchanged) {
 // generated each call (regression guard against reintroducing the old hardcoded-zero identifier).
 LOGOS_TEST(transfer_shielded_without_identifier_uses_random_nonzero_identifier) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + "\"}";
 
@@ -338,7 +338,7 @@ LOGOS_TEST(transfer_shielded_without_identifier_uses_random_nonzero_identifier) 
 // transfer_private mirrors transfer_shielded's identifier handling exactly (see above).
 LOGOS_TEST(transfer_private_with_identifier_forwards_it_unchanged) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string identifierHex(32, '7'); // 16 bytes of 0x77
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a')
@@ -354,7 +354,7 @@ LOGOS_TEST(transfer_private_with_identifier_forwards_it_unchanged) {
 
 LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + "\"}";
 
@@ -372,7 +372,7 @@ LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
 
 LOGOS_TEST(register_public_account_invalid_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.register_public_account("bad"));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -381,7 +381,7 @@ LOGOS_TEST(register_public_account_invalid_hex_error_json) {
 
 LOGOS_TEST(register_private_account_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.register_private_account(VALID_ID));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_register_private_account"));
@@ -394,7 +394,7 @@ LOGOS_TEST(register_private_account_success_json) {
 
 LOGOS_TEST(bridge_withdraw_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.bridge_withdraw(VALID_ID, VALID_ID_2, 100));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_bridge_withdraw"));
@@ -405,7 +405,7 @@ LOGOS_TEST(bridge_withdraw_success_json) {
 
 LOGOS_TEST(bridge_withdraw_invalid_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.bridge_withdraw("bad", VALID_ID_2, 100));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -416,7 +416,7 @@ LOGOS_TEST(bridge_withdraw_invalid_hex_error_json) {
 LOGOS_TEST(bridge_withdraw_ffi_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_bridge_withdraw").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.bridge_withdraw(VALID_ID, VALID_ID_2, 100));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -429,7 +429,7 @@ LOGOS_TEST(bridge_withdraw_ffi_error_json) {
 
 LOGOS_TEST(get_vault_balance_invalid_hex_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.get_vault_balance("not-hex").empty());
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_vault_balance"));
@@ -438,7 +438,7 @@ LOGOS_TEST(get_vault_balance_invalid_hex_returns_empty) {
 LOGOS_TEST(get_vault_balance_returns_decimal_string) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("get_vault_balance_value").returns(42);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string balance = module.get_vault_balance(VALID_ID);
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_vault_balance"));
@@ -448,14 +448,14 @@ LOGOS_TEST(get_vault_balance_returns_decimal_string) {
 LOGOS_TEST(get_vault_balance_ffi_error_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_get_vault_balance").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.get_vault_balance(VALID_ID).empty());
 }
 
 LOGOS_TEST(vault_claim_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, VALID_U128));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_vault_claim"));
@@ -466,7 +466,7 @@ LOGOS_TEST(vault_claim_success_json) {
 
 LOGOS_TEST(vault_claim_invalid_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim("bad", VALID_U128));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -476,7 +476,7 @@ LOGOS_TEST(vault_claim_invalid_hex_error_json) {
 
 LOGOS_TEST(vault_claim_invalid_amount_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, "ff"));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -486,7 +486,7 @@ LOGOS_TEST(vault_claim_invalid_amount_error_json) {
 LOGOS_TEST(vault_claim_ffi_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_vault_claim").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, VALID_U128));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -495,7 +495,7 @@ LOGOS_TEST(vault_claim_ffi_error_json) {
 
 LOGOS_TEST(vault_claim_private_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, VALID_U128));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_vault_claim_private"));
@@ -504,7 +504,7 @@ LOGOS_TEST(vault_claim_private_success_json) {
 
 LOGOS_TEST(vault_claim_private_invalid_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim_private("bad", VALID_U128));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -513,7 +513,7 @@ LOGOS_TEST(vault_claim_private_invalid_hex_error_json) {
 
 LOGOS_TEST(vault_claim_private_invalid_amount_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, "ff"));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -523,7 +523,7 @@ LOGOS_TEST(vault_claim_private_invalid_amount_error_json) {
 LOGOS_TEST(vault_claim_private_ffi_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_vault_claim_private").returns(static_cast<int>(INTERNAL_ERROR));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, VALID_U128));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
@@ -536,7 +536,7 @@ LOGOS_TEST(vault_claim_private_ffi_error_json) {
 
 LOGOS_TEST(claim_pinata_invalid_hex_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.claim_pinata("bad", VALID_ID_2, VALID_U128).empty());
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_claim_pinata"));
@@ -544,7 +544,7 @@ LOGOS_TEST(claim_pinata_invalid_hex_returns_empty) {
 
 LOGOS_TEST(claim_pinata_invalid_solution_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.claim_pinata(VALID_ID, VALID_ID_2, "ab").empty());
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_claim_pinata"));
@@ -552,7 +552,7 @@ LOGOS_TEST(claim_pinata_invalid_solution_returns_empty) {
 
 LOGOS_TEST(claim_pinata_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.claim_pinata(VALID_ID, VALID_ID_2, VALID_U128));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_claim_pinata"));
@@ -561,7 +561,7 @@ LOGOS_TEST(claim_pinata_success_json) {
 
 LOGOS_TEST(claim_pinata_already_initialized_invalid_siblings_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     // siblings json is not an array -> parse failure.
     const std::string result = module.claim_pinata_private_owned_already_initialized(
@@ -572,7 +572,7 @@ LOGOS_TEST(claim_pinata_already_initialized_invalid_siblings_returns_empty) {
 
 LOGOS_TEST(claim_pinata_already_initialized_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string siblings = std::string("[\"") + std::string(64, 'a') + std::string("\",\"") + std::string(64, 'b') + std::string("\"]");
     const nlohmann::json obj = parseObject(module.claim_pinata_private_owned_already_initialized(
@@ -588,7 +588,7 @@ LOGOS_TEST(claim_pinata_already_initialized_success_json) {
 LOGOS_TEST(create_new_success_then_double_open_fails) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_create_new").returns(1); // non-null handle
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw").empty());
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_new"));
@@ -599,7 +599,7 @@ LOGOS_TEST(create_new_success_then_double_open_fails) {
 LOGOS_TEST(create_new_null_handle_returns_internal_error) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_create_new").returns(0); // null handle
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
 }
@@ -607,7 +607,7 @@ LOGOS_TEST(create_new_null_handle_returns_internal_error) {
 LOGOS_TEST(open_success) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_open").returns(1);
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.open("/cfg", "/store"), static_cast<int64_t>(SUCCESS));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_open"));
@@ -616,7 +616,7 @@ LOGOS_TEST(open_success) {
 LOGOS_TEST(save_forwards_return_code) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_save").returns(static_cast<int>(SUCCESS));
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.save(), static_cast<int64_t>(SUCCESS));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_save"));
@@ -629,7 +629,7 @@ LOGOS_TEST(save_forwards_return_code) {
 LOGOS_TEST(get_sequencer_addr_returns_string) {
     auto t = LogosTestContext("logos_execution_zone");
     t.mockCFunction("wallet_ffi_get_sequencer_addr").returns("10.0.0.1:9000");
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.get_sequencer_addr(), std::string("10.0.0.1:9000"));
 }

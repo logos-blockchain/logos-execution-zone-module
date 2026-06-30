@@ -1,4 +1,4 @@
-// Integration tests for LogosExecutionZoneWalletModule — uses the REAL wallet_ffi
+// Integration tests for LEZCoreModule — uses the REAL wallet_ffi
 // library. No mocking. Limited to network-free, wallet-handle-free pure functions
 // so the suite stays deterministic and offline.
 //
@@ -6,14 +6,14 @@
 // time. Skipped automatically when the library is not found (see CMakeLists.txt).
 
 #include <logos_test.h>
-#include "logos_execution_zone_wallet_module.h"
+#include "lez_core_module.h"
 
 #include <string>
 
 // account_id_to_base58 and account_id_from_base58 are pure encoding helpers that
 // do not require an open wallet, so they can be exercised against the real lib.
 LOGOS_TEST(integration_account_id_base58_round_trip) {
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     const std::string idHex = std::string(64, 'a');
 
@@ -26,7 +26,7 @@ LOGOS_TEST(integration_account_id_base58_round_trip) {
 }
 
 LOGOS_TEST(integration_account_id_from_base58_rejects_garbage) {
-    LogosExecutionZoneWalletModule module;
+    LEZCoreModule module;
 
     // Clearly invalid base58 input should not decode to a valid id.
     LOGOS_ASSERT_TRUE(module.account_id_from_base58("!!!not-base58!!!").empty());
