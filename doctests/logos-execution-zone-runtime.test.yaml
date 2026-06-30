@@ -138,8 +138,8 @@ sections:
         text: "Scan the directory and confirm the module landed:"
         run: "./lgpm/bin/lgpm --modules-dir ./modules list"
         expect_contains:
-          - "logos_execution_zone"
-        check_file: "modules/logos_execution_zone/manifest.json"
+          - "lez_core"
+        check_file: "modules/lez_core/manifest.json"
 
   - title: "Run the daemon and call the module"
     step: true
@@ -170,18 +170,18 @@ sections:
         code_block: "logoscore status"
 
       - title: "List discovered modules"
-        text: "`logos_execution_zone` should be visible in the scan directory:"
+        text: "`lez_core` should be visible in the scan directory:"
         run: "./logos/bin/logoscore list-modules"
         code_block: "logoscore list-modules"
         expect_contains:
-          - "logos_execution_zone"
+          - "lez_core"
 
       - title: "Load the module"
-        text: "Load `logos_execution_zone` into the running daemon:"
-        run: "./logos/bin/logoscore load-module logos_execution_zone"
-        code_block: "logoscore load-module logos_execution_zone"
+        text: "Load `lez_core` into the running daemon:"
+        run: "./logos/bin/logoscore load-module lez_core"
+        code_block: "logoscore load-module lez_core"
         expect_contains:
-          - "logos_execution_zone"
+          - "lez_core"
 
       - title: "Confirm the module is loaded"
         text: |
@@ -190,17 +190,17 @@ sections:
         run: "./logos/bin/logoscore status"
         code_block: "logoscore status"
         expect_contains:
-          - "logos_execution_zone"
+          - "lez_core"
           - '"status":"loaded"'
 
       - title: "Introspect the module with module-info"
         text: |
           `module-info` lists the methods the module exposes — the same methods you
           can `call`:
-        run: "./logos/bin/logoscore module-info logos_execution_zone"
-        code_block: "logoscore module-info logos_execution_zone"
+        run: "./logos/bin/logoscore module-info lez_core"
+        code_block: "logoscore module-info lez_core"
         expect_contains:
-          - "logos_execution_zone"
+          - "lez_core"
           - "account_id_to_base58"
           - "account_id_from_base58"
 
@@ -208,19 +208,19 @@ sections:
         text: |
           `name` returns the module's own identifier — the simplest possible
           round-trip through the loaded plugin over liblogos' IPC:
-        run: "./logos/bin/logoscore call logos_execution_zone name"
-        code_block: "logoscore call logos_execution_zone name"
+        run: "./logos/bin/logoscore call lez_core name"
+        code_block: "logoscore call lez_core name"
         expect_contains:
-          - '"result":"logos_execution_zone"'
+          - '"result":"lez_core"'
 
       - title: "Read the module version"
         text: |
-          `version` returns the module's semantic version (`1.0.0`), matching
+          `version` returns the module's semantic version (`0.2.0`), matching
           `metadata.json`:
-        run: "./logos/bin/logoscore call logos_execution_zone version"
-        code_block: "logoscore call logos_execution_zone version"
+        run: "./logos/bin/logoscore call lez_core version"
+        code_block: "logoscore call lez_core version"
         expect_contains:
-          - '"result":"1.0.0"'
+          - '"result":"0.2.0"'
 
       - title: "Encode an account id to base58"
         text: |
@@ -228,8 +228,8 @@ sections:
           and returns its base58 form. This is a pure encoding helper in
           `wallet_ffi` — no open wallet and no network required, so it runs
           entirely offline:
-        run: "./logos/bin/logoscore call logos_execution_zone account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        code_block: "logoscore call logos_execution_zone account_id_to_base58 aaaaaaaa...aaaa  # 64 hex chars"
+        run: "./logos/bin/logoscore call lez_core account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        code_block: "logoscore call lez_core account_id_to_base58 aaaaaaaa...aaaa  # 64 hex chars"
         expect_contains:
           - '"result"'
 
@@ -240,14 +240,14 @@ sections:
           decoding the same id and recovering the input is a deterministic,
           end-to-end proof that the codec — and the IPC path to this module — work:
         run: |
-          ENC=$(./logos/bin/logoscore call logos_execution_zone account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+          ENC=$(./logos/bin/logoscore call lez_core account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
           B58=$(printf '%s' "$ENC" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
           echo "encoded: $B58"
-          ./logos/bin/logoscore call logos_execution_zone account_id_from_base58 "$B58"
+          ./logos/bin/logoscore call lez_core account_id_from_base58 "$B58"
         code_block: |
           # Encode, then decode the result back — the round-trip returns the input.
-          B58=$(logoscore call logos_execution_zone account_id_to_base58 aaaa...aaaa)
-          logoscore call logos_execution_zone account_id_from_base58 "$B58"
+          B58=$(logoscore call lez_core account_id_to_base58 aaaa...aaaa)
+          logoscore call lez_core account_id_from_base58 "$B58"
         expect_contains:
           - "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -255,8 +255,8 @@ sections:
         text: |
           Decoding obvious garbage fails cleanly: `account_id_from_base58` returns
           an empty result rather than crashing the module or the daemon:
-        run: "./logos/bin/logoscore call logos_execution_zone account_id_from_base58 '!!!not-base58!!!'"
-        code_block: "logoscore call logos_execution_zone account_id_from_base58 '!!!not-base58!!!'"
+        run: "./logos/bin/logoscore call lez_core account_id_from_base58 '!!!not-base58!!!'"
+        code_block: "logoscore call lez_core account_id_from_base58 '!!!not-base58!!!'"
         expect_contains:
           - '"result":""'
 
