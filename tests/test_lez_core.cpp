@@ -28,8 +28,8 @@ static nlohmann::json parseObject(const std::string& json) {
 
 LOGOS_TEST(name_and_version) {
     LEZCoreModule module;
-    LOGOS_ASSERT_EQ(module.name(), std::string("logos_execution_zone"));
-    LOGOS_ASSERT_EQ(module.version(), std::string("1.0.0"));
+    LOGOS_ASSERT_EQ(module.name(), std::string("lez_core"));
+    LOGOS_ASSERT_EQ(module.version(), std::string("0.2.0"));
 }
 
 // ============================================================================
