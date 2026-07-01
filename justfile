@@ -3,11 +3,11 @@ default: build
 configure:
     cmake -S . -B build -G Ninja \
       ${LOGOS_CORE_ROOT:+-DLOGOS_CORE_ROOT="$LOGOS_CORE_ROOT"} \
-      ${LOGOS_EXECUTION_ZONE_WALLET_LIB:+-DLOGOS_EXECUTION_ZONE_WALLET_LIB="$LOGOS_EXECUTION_ZONE_WALLET_LIB"} \
-      ${LOGOS_EXECUTION_ZONE_WALLET_INCLUDE:+-DLOGOS_EXECUTION_ZONE_WALLET_INCLUDE="$LOGOS_EXECUTION_ZONE_WALLET_INCLUDE"}
+      ${LEZ_CORE_LIB:+-DLEZ_CORE_LIB="$LEZ_CORE_LIB"} \
+      ${LEZ_CORE_INCLUDE:+-DLEZ_CORE_INCLUDE="$LEZ_CORE_INCLUDE"}
 
 build: configure
-    cmake --build build --parallel --target lez_wallet_module_plugin
+    cmake --build build --parallel --target lez_core_module_plugin
 
 clean:
     rm -rf build result

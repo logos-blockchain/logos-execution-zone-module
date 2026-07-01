@@ -1,17 +1,17 @@
 {
-  "name": "logos_execution_zone",
-  "display_name": "LEZ Module",
-  "version": "1.0.0",
-  "description": "Logos Execution Zone Module for Logos Core",
+  "name": "lez_core",
+  "display_name": "LEZ Core Module",
+  "version": "0.2.0",
+  "description": "Logos Execution Zone Core Module for Logos Core",
   "author": "Logos Blockchain Team",
   "type": "core",
   "category": "blockchain",
   "interface": "universal",
   "codegen": {
-    "impl_header": "src/logos_execution_zone_wallet_module.h",
-    "impl_class": "LogosExecutionZoneWalletModule"
+    "impl_header": "src/lez_core_module.h",
+    "impl_class": "LEZCoreModule"
   },
-  "main": "logos_execution_zone_plugin",
+  "main": "lez_core_plugin",
   "dependencies": [],
   "capabilities": [],
   "include": [],
