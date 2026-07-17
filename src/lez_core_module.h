@@ -80,7 +80,12 @@ public:
     std::vector<uint8_t> amm_elf();
     std::vector<uint8_t> ata_elf();
 
-    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint32_t>& instruction, const std::string& program_id_hex);
+    // `instruction` uses a byte-string (`bstr`) IPC type so the auto-generated
+    // Qt/QtRO glue can serialize it across the module process boundary. Declaring
+    // it as std::vector<uint32_t> makes the header->LIDL generator fall back to an
+    // opaque `any` with no QDataStream operators, silently dropping every argument
+    // over QtRO. It carries the little-endian bytes of the RISC Zero u32 words.
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex);
     std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint32_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
     std::string send_program_deployment_transaction(const std::vector<uint8_t>& program_elf);
 
