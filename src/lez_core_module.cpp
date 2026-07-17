@@ -981,7 +981,7 @@ std::vector<uint8_t> LEZCoreModule::authenticated_transfer_elf() {
 std::string LEZCoreModule::send_generic_public_transaction(
         const std::vector<std::string>& account_ids,
         const std::vector<bool>& signing_requirements,
-        const std::vector<uint32_t>& instruction,
+        const std::vector<uint8_t>& instruction,
         const std::string& program_id_hex
 ) {
     std::vector<FfiAccountIdentity> identities_resolved;
@@ -1007,8 +1007,23 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const FfiAccountIdentity *account_identities = identities_resolved.data();
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
-    const uint32_t* input_instruction_data = instruction.data();
-    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+    // `instruction` arrives as the little-endian bytes of the RISC Zero u32
+    // input words (the IPC layer carries a byte string, not a u32 array), so
+    // rebuild the Vec<u32> the FFI expects.
+    if (instruction.size() % 4 != 0) {
+        fprintf(stderr, "send_generic_public_transaction: instruction size %zu is not a multiple of 4\n", instruction.size());
+        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: instruction size is not a multiple of 4"));
+    }
+    std::vector<uint32_t> instruction_words(instruction.size() / 4);
+    for (size_t i = 0; i < instruction_words.size(); ++i) {
+        instruction_words[i] =
+              static_cast<uint32_t>(instruction[4 * i])
+            | (static_cast<uint32_t>(instruction[4 * i + 1]) << 8)
+            | (static_cast<uint32_t>(instruction[4 * i + 2]) << 16)
+            | (static_cast<uint32_t>(instruction[4 * i + 3]) << 24);
+    }
+    const uint32_t* input_instruction_data = instruction_words.data();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction_words.size());
 
     std::vector<uint8_t> program_id_bytes;
     if (!hexToBytes(program_id_hex, program_id_bytes, 32)) {
