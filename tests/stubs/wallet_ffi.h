@@ -16,12 +16,19 @@ extern "C" {
 #endif
 
 // Error codes returned by most wallet_ffi_* functions (0 == SUCCESS).
+//
+// NOTE: this stub does NOT mirror the real wallet_ffi.h — the names below are a
+// subset and the values differ (INTERNAL_ERROR is 99 upstream, not 1). Code that
+// compiles against this stub can therefore still fail against the real header,
+// so only assert on names present in both. INVALID_TYPE_CONVERSION carries its
+// upstream value so the narrowing guards can be tested by name.
 typedef enum WalletFfiError {
     SUCCESS = 0,
     INTERNAL_ERROR = 1,
     INVALID_INPUT = 2,
     NOT_FOUND = 3,
-    INVALID_ACCOUNT_ID = 4
+    INVALID_ACCOUNT_ID = 4,
+    INVALID_TYPE_CONVERSION = 15
 } WalletFfiError;
 
 // Opaque wallet handle.

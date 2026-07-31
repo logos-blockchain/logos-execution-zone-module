@@ -1201,7 +1201,7 @@ std::string LEZCoreModule::create_new(
 int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth) {
     if (depth > UINT32_MAX) {
         fprintf(stderr, "restore_storage: depth exceeds 32 bits\n");
-        return INVALID_INPUT;
+        return INVALID_TYPE_CONVERSION;
     }
 
     const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), static_cast<uint32_t>(depth));

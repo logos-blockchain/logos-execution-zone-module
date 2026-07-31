@@ -637,7 +637,7 @@ LOGOS_TEST(restore_storage_rejects_depth_above_32_bits) {
 
     const uint64_t tooWide = static_cast<uint64_t>(UINT32_MAX) + 1;
     LOGOS_ASSERT_EQ(module.restore_storage("mnemonic", "pw", tooWide),
-                    static_cast<int64_t>(INVALID_INPUT));
+                    static_cast<int64_t>(INVALID_TYPE_CONVERSION));
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_restore_data"));
 }
 
