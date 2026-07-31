@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -620,6 +621,66 @@ LOGOS_TEST(save_forwards_return_code) {
 
     LOGOS_ASSERT_EQ(module.save(), static_cast<int64_t>(SUCCESS));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_save"));
+}
+
+// ============================================================================
+// 64-bit API / 32-bit FFI boundary
+//
+// The module API takes uint64_t because LIDL numbers are 64-bit only, while
+// the wallet FFI is 32-bit. A value that does not fit must be refused, not
+// truncated into a different depth or a different instruction.
+// ============================================================================
+
+LOGOS_TEST(restore_storage_rejects_depth_above_32_bits) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const uint64_t tooWide = static_cast<uint64_t>(UINT32_MAX) + 1;
+    LOGOS_ASSERT_EQ(module.restore_storage("mnemonic", "pw", tooWide),
+                    static_cast<int64_t>(INVALID_INPUT));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_restore_data"));
+}
+
+LOGOS_TEST(restore_storage_accepts_depth_at_32_bit_limit) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("wallet_ffi_restore_data").returns(static_cast<int>(SUCCESS));
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.restore_storage("mnemonic", "pw", UINT32_MAX),
+                    static_cast<int64_t>(SUCCESS));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_restore_data"));
+}
+
+LOGOS_TEST(send_generic_public_transaction_rejects_wide_instruction_word) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::vector<uint64_t> instruction = {
+        0x1u, static_cast<uint64_t>(UINT32_MAX) + 1};
+    const std::string json = module.send_generic_public_transaction(
+        {VALID_ID}, {true}, instruction, std::string(64, 'c'));
+
+    auto obj = parseObject(json);
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+    LOGOS_ASSERT_FALSE(
+        t.cFunctionCalled("wallet_ffi_send_generic_public_transaction"));
+}
+
+LOGOS_TEST(send_generic_private_transaction_rejects_wide_instruction_word) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::vector<uint64_t> instruction = {
+        0x1u, static_cast<uint64_t>(UINT32_MAX) + 1};
+    const std::string json = module.send_generic_private_transaction(
+        {VALID_ID}, instruction, {}, {});
+
+    auto obj = parseObject(json);
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+    LOGOS_ASSERT_FALSE(
+        t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
 }
 
 // ============================================================================
