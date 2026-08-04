@@ -24,13 +24,13 @@ intro: |
      verifying the module actually runs and round-trips real values through
      `wallet_ffi`.
 
-  The methods exercised here — `name`/`version` and the base58 account-id codec
-  (`account_id_to_base58` / `account_id_from_base58`) — are the module's
-  deterministic, **offline** surface: they need neither an open wallet nor a live
-  sequencer, so a green run is reproducible in CI. The stateful operations
-  (creating accounts, transfers, sync, pinata claims) require a running
-  sequencer and network, and are covered by the module's unit tests (mocked
-  `wallet_ffi`) and integration tests (real `wallet_ffi`) instead.
+  The methods exercised here — `name`/`version`, lifecycle status and validation,
+  generic-submission validation, and the base58 account-id codec — are the
+  module's deterministic, **offline** surface. Invalid lifecycle and transaction
+  requests are rejected before wallet FFI, so a green run is reproducible in CI.
+  Stateful operations (creating accounts, transfers, sync, pinata claims) require
+  a running sequencer and network, and are covered by the module's unit tests
+  (mocked `wallet_ffi`) and opt-in integration tests (real `wallet_ffi`) instead.
 
   Because the module is built from the commit under test and then loaded and
   called through a real `logoscore` daemon, a green run is real evidence that
@@ -213,12 +213,48 @@ sections:
 
       - title: "Read the module version"
         text: |
-          `version` returns the module's semantic version (`0.2.0`), matching
+          `version` returns the module's semantic version (`0.5.0`), matching
           `metadata.json`:
         run: "./logos/bin/logoscore call lez_core version"
         code_block: "logoscore call lez_core version"
         expect_contains:
-          - '"result":"0.3.0"'
+          - '"result":"0.5.0"'
+
+      - title: "Inspect the shared default wallet lifecycle"
+        text: |
+          The host injects the module's private persistence directory before the
+          first dispatch. These calls prove all four lifecycle methods survive
+          code generation and return typed JSON envelopes through the runtime.
+          Empty onboarding inputs are rejected before creating profile files or
+          invoking the wallet library.
+        run: |
+          ./logos/bin/logoscore call lez_core wallet_status
+          ./logos/bin/logoscore call lez_core open_default
+          ./logos/bin/logoscore call lez_core create_default ''
+          ./logos/bin/logoscore call lez_core restore_default '' '' 0
+        code_block: |
+          logoscore call lez_core wallet_status
+          logoscore call lez_core open_default
+          logoscore call lez_core create_default ''
+          logoscore call lez_core restore_default '' '' 0
+        expect_contains:
+          - '"result"'
+          - "profile"
+          - "invalid_password"
+          - "invalid_mnemonic"
+
+      - title: "Validate a generic public submission through the runtime"
+        text: |
+          Vector arguments cross the generated module/RPC boundary as native JSON.
+          The empty-account request is rejected by the module before wallet FFI,
+          while still returning the generic transaction envelope.
+        run: "./logos/bin/logoscore call lez_core send_generic_public_transaction 'json:[]' 'json:[]' 'json:[1]' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        code_block: "logoscore call lez_core send_generic_public_transaction 'json:[]' 'json:[]' 'json:[1]' aaaaaaaa...aaaa"
+        expect_contains:
+          - "success"
+          - "tx_hash"
+          - "secrets"
+          - "at least one account"
 
       - title: "Encode an account id to base58"
         text: |

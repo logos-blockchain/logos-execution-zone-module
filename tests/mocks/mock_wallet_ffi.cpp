@@ -22,6 +22,12 @@ extern "C" {
 namespace MockWalletFfiCapture {
 uint8_t lastTransferShieldedIdentifier[16] = {0};
 uint8_t lastTransferPrivateIdentifier[16] = {0};
+std::string lastCreateConfigPath;
+std::string lastCreateStoragePath;
+std::string lastCreateStatisticsPath;
+std::string lastOpenConfigPath;
+std::string lastOpenStoragePath;
+std::string lastOpenStatisticsPath;
 } // namespace MockWalletFfiCapture
 
 namespace {
@@ -54,8 +60,16 @@ extern "C" {
 
 // === Lifecycle ===
 
-FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char*, const char*) {
+FfiCreateWalletOutput wallet_ffi_create_new(
+    const char* config_path,
+    const char* storage_path,
+    const char* statistics_path,
+    const char*
+) {
     LOGOS_CMOCK_RECORD("wallet_ffi_create_new");
+    MockWalletFfiCapture::lastCreateConfigPath = config_path ? config_path : "";
+    MockWalletFfiCapture::lastCreateStoragePath = storage_path ? storage_path : "";
+    MockWalletFfiCapture::lastCreateStatisticsPath = statistics_path ? statistics_path : "";
     const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_create_new");
     const char* mnemonic_ok = LOGOS_CMOCK_RETURN_STRING("wallet_ffi_create_new");
     FfiCreateWalletOutput output;
@@ -65,8 +79,11 @@ FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char
     return output;
 }
 
-WalletHandle* wallet_ffi_open(const char*, const char*, const char*) {
+WalletHandle* wallet_ffi_open(const char* config_path, const char* storage_path, const char* statistics_path) {
     LOGOS_CMOCK_RECORD("wallet_ffi_open");
+    MockWalletFfiCapture::lastOpenConfigPath = config_path ? config_path : "";
+    MockWalletFfiCapture::lastOpenStoragePath = storage_path ? storage_path : "";
+    MockWalletFfiCapture::lastOpenStatisticsPath = statistics_path ? statistics_path : "";
     const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_open");
     return ok ? reinterpret_cast<WalletHandle*>(&g_fakeWallet) : nullptr;
 }
@@ -211,8 +228,9 @@ static WalletFfiError fillTransactionResult(const char* key, FfiTransactionResul
         out_result->success = (err == 0);
         if (err == 0) {
             const char* tx = LogosCMockStore::instance().getReturnString("transaction_tx_hash");
+            const bool forceEmpty = LogosCMockStore::instance().getReturn<int>("transaction_tx_hash_empty") != 0;
             // getReturnString yields "" (non-null) when unset; fall back to a default.
-            out_result->tx_hash = strdup((tx && *tx) ? tx : "0xmocktxhash2");
+            out_result->tx_hash = strdup(forceEmpty ? "" : ((tx && *tx) ? tx : "0xmocktxhash2"));
         } else {
             out_result->tx_hash = nullptr;
         }
@@ -607,6 +625,7 @@ WalletFfiError wallet_ffi_free_label_list(LabelList *label_list) {
         label_list->labels_data = nullptr;
         label_list->labels_size = 0;
     }
+    return SUCCESS;
 }
 
 } // extern "C"
