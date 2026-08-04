@@ -58,16 +58,10 @@ jobs:
           name: logos-co
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-      # Resolve the commit under test. For pull requests this is the PR's head
-      # commit (not the synthetic merge commit); for pushes it's the pushed
-      # commit. Passed to --release-for below so the doc-test packages THIS commit
-      # of logos-execution-zone-module instead of the latest published flake.
-      #
-      # Fork PRs are the exception: their head commit lives in the fork, not in
-      # logos-blockchain/logos-execution-zone-module, so nix could not fetch
-      # `github:logos-blockchain/logos-execution-zone-module/<sha>`. We blank the
-      # SHA for forks (--release-for repo= → pins that repo to latest), so the
-      # doc-test still runs for fork PRs, just against master.
+      # Resolve the commit for the rendered fallback command. The executable
+      # doc-test itself builds the checked-out tree through
+      # LOGOS_EXECUTION_ZONE_MODULE_SOURCE below. This also makes fork PRs test
+      # their own code instead of silently falling back to upstream main.
       - name: Resolve commit under test
         id: commit
         shell: bash
@@ -75,7 +69,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ] && \
              [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
             echo "sha=" >> "$GITHUB_OUTPUT"
-            echo "Fork PR detected — doc-test will run against latest master."
+            echo "Fork PR detected — executable doc-test will use the local checkout."
           else
             echo "sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
           fi
@@ -84,12 +78,12 @@ jobs:
       # (github:logos-co/logos-doctest). The flake bundles Python + PyYAML
       # (+ rich), so no pip install step is needed.
       #
-      # --release-for pins the {release} placeholder for logos-execution-zone-module
-      # to the commit under test, so
-      # `github:logos-blockchain/logos-execution-zone-module{release}` in the spec
-      # becomes `.../<sha>` — the doc-test packages and exercises this PR/push
-      # rather than master. Every other repo URL still resolves to latest.
+      # The local source environment variable makes the executable run consume
+      # this checkout. --release-for still expands the published fallback command
+      # in the report; every other repository URL resolves to latest.
       - name: Run execution-zone-module runtime doc-test
+        env:
+          LOGOS_EXECUTION_ZONE_MODULE_SOURCE: path:${{ github.workspace }}
         run: |
           # --continue-on-fail so the run walks every step and the published
           # report is complete. The job still fails (non-zero exit) if any step
