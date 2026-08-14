@@ -1171,6 +1171,43 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
     return is_found;
 }
 
+// === Multi-sequencer ===
+
+int64_t LEZCoreModule::client_rotation() {
+    const WalletFfiError error = wallet_ffi_client_rotation(walletHandle);
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_client_rotation: wallet FFI error %d\n", error);
+        return error;
+    }
+
+    return SUCCESS;
+}
+
+int64_t LEZCoreModule::remove_sequencer(const &std::string addr) {
+    const WalletFfiError error = wallet_ffi_remove_sequencer(walletHandle, addr.c_str());
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_remove_sequencer: wallet FFI error %d\n", error);
+        return error;
+    }
+
+    return SUCCESS;
+}
+
+int64_t LEZCoreModule::add_sequencer(const &std::string addr, const &std::string user, const &std::string password) {
+    const WalletFfiError error = wallet_ffi_remove_sequencer(
+                                    walletHandle, 
+                                    addr.c_str(), 
+                                    user.empty()? nullptr : user.c_str(), 
+                                    password.empty()? nullptr : password.c_str()
+    );
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_remove_sequencer: wallet FFI error %d\n", error);
+        return error;
+    }
+
+    return SUCCESS;
+}
+
 // === Wallet Lifecycle ===
 
 std::string LEZCoreModule::create_new(
@@ -1239,6 +1276,48 @@ std::string LEZCoreModule::get_sequencer_addr() {
     std::string value(addr);
     wallet_ffi_free_string(addr);
     return value;
+}
+
+uintptr_t LEZCoreModule::get_distribution_limit() {
+    uintptr_t distribution_limit = 0;
+    const WalletFfiError error = wallet_ffi_get_distribution_limit(walletHandle, &distribution_limit);
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_get_distribution_limit: wallet FFI error %d\n", error);
+        return 0;
+    }
+
+    return distribution_limit;
+}
+
+uintptr_t LEZCoreModule::get_callibration_limit() {
+    uintptr_t callibration_limit = 0;
+    const WalletFfiError error = wallet_ffi_get_callibration_limit(walletHandle, &callibration_limit);
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_get_callibration_limit: wallet FFI error %d\n", error);
+        return 0;
+    }
+
+    return callibration_limit;
+}
+
+int64_t LEZCoreModule::set_callibration_limit(uintptr_t callibration_limit) {
+    const WalletFfiError error = wallet_ffi_set_distribution_limit(walletHandle, callibration_limit);
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_set_callibration_limit: wallet FFI error %d\n", error);
+        return error;
+    }
+
+    return SUCCESS;
+}
+
+int64_t LEZCoreModule::set_distribution_limit(uintptr_t distribution_limit) {
+    const WalletFfiError error = wallet_ffi_set_distribution_limit(walletHandle, distribution_limit);
+    if (error != SUCCESS) {
+        fprintf(stderr, "wallet_ffi_set_distribution_limit: wallet FFI error %d\n", error);
+        return error;
+    }
+
+    return SUCCESS;
 }
 
 // === Labels ===
