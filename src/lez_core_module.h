@@ -87,8 +87,8 @@ public:
 
     int64_t client_rotation();
 
-    int64_t add_sequencer(const &std::string addr, const &std::string user, const &std::string password)
-    int64_t remove_sequencer(const &std::string addr);
+    int64_t add_sequencer(const std::string& addr, const std::string& user, const std::string& password)
+    int64_t remove_sequencer(const std::string& addr);
 
     // === Bridge (L1 Bedrock <-> L2) ===
     std::string bridge_withdraw(const std::string& from_hex, const std::string& bedrock_account_pk_hex, uint64_t amount);
@@ -101,11 +101,11 @@ public:
     // === Configuration ===
     std::string get_sequencer_addr();
 
-    uintptr_t get_distribution_limit();
-    uintptr_t get_callibration_limit();
+    uint64_t get_distribution_limit();
+    uint64_t get_callibration_limit();
 
-    int64_t set_distribution_limit(uintptr_t distribution_limit);
-    int64_t set_callibration_limit(uintptr_t callibration_limit);
+    int64_t set_distribution_limit(uint64_t distribution_limit);
+    int64_t set_callibration_limit(uint64_t callibration_limit);
 
     // === Labels ===
     bool check_label_available(const std::string& label);
