@@ -313,6 +313,23 @@ WalletFfiError wallet_ffi_poll_transaction_status(WalletHandle *handle,
                                                        FfiBytes32 tx_hash,
                                                        bool *transaction_status);
 
+WalletFfiError wallet_ffi_client_rotation(WalletHandle *handle);
+
+WalletFfiError wallet_ffi_remove_sequencer(WalletHandle *handle, const char *addr);
+WalletFfiError wallet_ffi_add_sequencer(WalletHandle *handle,
+                                             const char *addr,
+                                             const char *user,
+                                             const char *password);
+
+WalletFfiError wallet_ffi_get_callibration_limit(WalletHandle *handle,
+                                                      uintptr_t *callibration_limit);
+WalletFfiError wallet_ffi_get_distribution_limit(WalletHandle *handle,
+                                                      uintptr_t *distribution_limit);
+WalletFfiError wallet_ffi_set_callibration_limit(WalletHandle *handle,
+                                                      uintptr_t callibration_limit);
+WalletFfiError wallet_ffi_set_distribution_limit(WalletHandle *handle,
+                                                      uintptr_t distribution_limit);
+
 WalletFfiError wallet_ffi_resolve_public_account(FfiBytes32 account_id,
                                                       bool needs_sign,
                                                       FfiAccountIdentity *out_account_identity);
