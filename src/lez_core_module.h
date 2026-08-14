@@ -34,7 +34,7 @@ public:
     int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path);
     int64_t save();
 
-    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth);
+    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth);
 
     // === Account Management ===
     std::string create_account_public();
@@ -83,7 +83,7 @@ public:
     // opaque `any` with no QDataStream operators, silently dropping every argument
     // over QtRO. It carries the little-endian bytes of the RISC Zero u32 words.
     std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex);
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint32_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
     std::string send_program_deployment_transaction(const std::vector<uint8_t>& program_elf);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
@@ -92,7 +92,7 @@ public:
 
     int64_t client_rotation();
 
-    int64_t add_sequencer(const std::string& addr, const std::string& user, const std::string& password)
+    int64_t add_sequencer(const std::string& addr, const std::string& user, const std::string& password);
     int64_t remove_sequencer(const std::string& addr);
 
     // === Bridge (L1 Bedrock <-> L2) ===

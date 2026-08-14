@@ -999,6 +999,11 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const FfiAccountIdentity *account_identities = identities_resolved.data();
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
+    if (instruction.size() % 4 != 0) {
+        fprintf(stderr, "wallet_ffi_resolve_private_account failed: instruction data is undivisible by 4");
+        return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_private_account: internal error, instruction data is undivisible by 4 "));
+    }
+
     // `instruction` arrives as the little-endian bytes of the RISC Zero u32
     // input words (the IPC layer carries a byte string, not a u32 array), so
     // rebuild the Vec<u32> the FFI expects.
@@ -1048,7 +1053,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
 
 std::string LEZCoreModule::send_generic_private_transaction(
         const std::vector<std::string>& account_ids,
-        const std::vector<uint32_t>& instruction,
+        const std::vector<uint8_t>& instruction,
         const std::vector<uint8_t>& program_elf,
         const std::vector<std::vector<uint8_t>>& program_dependencies
 ) {
@@ -1075,8 +1080,24 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const FfiAccountIdentity *account_identities = identities_resolved.data();
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
-    const uint32_t* input_instruction_data = instruction.data();
-    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+    if (instruction.size() % 4 != 0) {
+        fprintf(stderr, "wallet_ffi_resolve_private_account failed: instruction data is undivisible by 4");
+        return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_private_account: internal error, instruction data is undivisible by 4 "));
+    }
+
+    // `instruction` arrives as the little-endian bytes of the RISC Zero u32
+    // input words (the IPC layer carries a byte string, not a u32 array), so
+    // rebuild the Vec<u32> the FFI expects.
+    std::vector<uint32_t> instruction_words(instruction.size() / 4);
+    for (size_t i = 0; i < instruction_words.size(); ++i) {
+        instruction_words[i] =
+              static_cast<uint32_t>(instruction[4 * i])
+            | (static_cast<uint32_t>(instruction[4 * i + 1]) << 8)
+            | (static_cast<uint32_t>(instruction[4 * i + 2]) << 16)
+            | (static_cast<uint32_t>(instruction[4 * i + 3]) << 24);
+    }
+    const uint32_t* input_instruction_data = instruction_words.data();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction_words.size());
 
     FfiProgram main_program {};
 
@@ -1194,7 +1215,7 @@ int64_t LEZCoreModule::client_rotation() {
     return SUCCESS;
 }
 
-int64_t LEZCoreModule::remove_sequencer(const &std::string addr) {
+int64_t LEZCoreModule::remove_sequencer(const std::string& addr) {
     const WalletFfiError error = wallet_ffi_remove_sequencer(walletHandle, addr.c_str());
     if (error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_remove_sequencer: wallet FFI error %d\n", error);
@@ -1204,15 +1225,15 @@ int64_t LEZCoreModule::remove_sequencer(const &std::string addr) {
     return SUCCESS;
 }
 
-int64_t LEZCoreModule::add_sequencer(const &std::string addr, const &std::string user, const &std::string password) {
-    const WalletFfiError error = wallet_ffi_remove_sequencer(
+int64_t LEZCoreModule::add_sequencer(const std::string& addr, const std::string& user, const std::string& password) {
+    const WalletFfiError error = wallet_ffi_add_sequencer(
                                     walletHandle, 
                                     addr.c_str(), 
                                     user.empty()? nullptr : user.c_str(), 
                                     password.empty()? nullptr : password.c_str()
     );
     if (error != SUCCESS) {
-        fprintf(stderr, "wallet_ffi_remove_sequencer: wallet FFI error %d\n", error);
+        fprintf(stderr, "wallet_ffi_add_sequencer: wallet FFI error %d\n", error);
         return error;
     }
 
@@ -1246,7 +1267,7 @@ std::string LEZCoreModule::create_new(
     return mnemonic;
 }
 
-int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
+int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth) {
     const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
     if (error != SUCCESS) {
         fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
