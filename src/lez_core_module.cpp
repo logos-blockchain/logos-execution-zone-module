@@ -1311,29 +1311,29 @@ std::string LEZCoreModule::get_sequencer_addr() {
 }
 
 uint64_t LEZCoreModule::get_distribution_limit() {
-    uint64_t distribution_limit = 0;
+    uintptr_t distribution_limit = 0;
     const WalletFfiError error = wallet_ffi_get_distribution_limit(walletHandle, &distribution_limit);
     if (error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_get_distribution_limit: wallet FFI error %d\n", error);
         return 0;
     }
 
-    return distribution_limit;
+    return static_cast<uint64_t>(distribution_limit);
 }
 
 uint64_t LEZCoreModule::get_callibration_limit() {
-    uint64_t callibration_limit = 0;
+    uintptr_t callibration_limit = 0;
     const WalletFfiError error = wallet_ffi_get_callibration_limit(walletHandle, &callibration_limit);
     if (error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_get_callibration_limit: wallet FFI error %d\n", error);
         return 0;
     }
 
-    return callibration_limit;
+    return static_cast<uint64_t>(callibration_limit);
 }
 
 int64_t LEZCoreModule::set_callibration_limit(uint64_t callibration_limit) {
-    const WalletFfiError error = wallet_ffi_set_distribution_limit(walletHandle, callibration_limit);
+    const WalletFfiError error = wallet_ffi_set_distribution_limit(walletHandle, static_cast<uintptr_t>(callibration_limit));
     if (error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_set_callibration_limit: wallet FFI error %d\n", error);
         return error;
@@ -1343,7 +1343,7 @@ int64_t LEZCoreModule::set_callibration_limit(uint64_t callibration_limit) {
 }
 
 int64_t LEZCoreModule::set_distribution_limit(uint64_t distribution_limit) {
-    const WalletFfiError error = wallet_ffi_set_distribution_limit(walletHandle, distribution_limit);
+    const WalletFfiError error = wallet_ffi_set_distribution_limit(walletHandle, static_cast<uintptr_t>(distribution_limit));
     if (error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_set_distribution_limit: wallet FFI error %d\n", error);
         return error;
