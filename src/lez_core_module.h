@@ -2,9 +2,12 @@
 #define LEZ_CORE_MODULE_H
 
 #include <cstdint>
+#include <filesystem>
+#include <mutex>
 #include <string>
 
 #include <logos_json.h>
+#include <logos_module_context.h>
 
 extern "C" {
 #include <wallet_ffi.h>
@@ -18,7 +21,7 @@ extern "C" {
 // NOTE: the generator parses this header line-by-line and only recognises a
 // method when its declaration ends with ';' on a single line. Keep every
 // method declaration on ONE line — multi-line signatures are silently dropped.
-class LEZCoreModule {
+class LEZCoreModule : public LogosModuleContext {
 public:
     LEZCoreModule();
     ~LEZCoreModule();
@@ -30,6 +33,10 @@ public:
     std::string version() const;
 
     // === Wallet Lifecycle ===
+    std::string wallet_status();
+    std::string open_default();
+    std::string create_default(const std::string& password);
+    std::string restore_default(const std::string& mnemonic, const std::string& password, uint32_t depth);
     std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path, const std::string& password);
     int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path);
     int64_t save();
@@ -101,7 +108,39 @@ public:
     std::vector<std::string> get_all_labels_for_account(const std::string& account_id_hex, bool is_private);
 
 private:
+    enum class OpenProfile {
+        None,
+        Default,
+        External,
+    };
+
+    void onContextReady() override;
+    std::string lifecycleEnvelope(
+        bool success,
+        const std::string& state,
+        const std::string& error_code = {},
+        const std::string& error = {},
+        const std::string& mnemonic = {}
+    ) const;
+    std::string failLifecycle(const std::string& error_code, const std::string& error);
+    std::string rejectLifecycle(const std::string& error_code, const std::string& error) const;
+    std::string failLifecycleAfterRollback(const std::string& error_code, const std::string& error);
+    void clearLifecycleError();
+    bool defaultProfileComplete() const;
+    bool defaultProfileHasArtifacts() const;
+    bool ensureDefaultProfileDirectory(std::string& error);
+    bool rollbackDefaultProfile(std::string& error);
+    int64_t saveUnlocked();
+
+    mutable std::mutex walletMutex;
     WalletHandle* walletHandle = nullptr;
+    OpenProfile openProfile = OpenProfile::None;
+    std::filesystem::path defaultProfileRoot;
+    std::filesystem::path defaultConfigPath;
+    std::filesystem::path defaultStoragePath;
+    std::filesystem::path defaultStatisticsPath;
+    std::string lastErrorCode;
+    std::string lastError;
 };
 
 #endif // LEZ_CORE_MODULE_H

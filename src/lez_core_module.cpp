@@ -11,6 +11,8 @@
 
 namespace {
 
+constexpr uint32_t MAX_RESTORE_DEPTH = 10;
+
 std::string bytesToHex(const uint8_t* data, const size_t length) {
     static const char hexChars[] = "0123456789abcdef";
     std::string out;
@@ -79,9 +81,18 @@ bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int 
     std::vector<uint8_t> decoded;
     decoded.reserve(trimmed.size() / 2);
     auto nibble = [](char c, int& out) -> bool {
-        if (c >= '0' && c <= '9') { out = c - '0'; return true; }
-        if (c >= 'a' && c <= 'f') { out = c - 'a' + 10; return true; }
-        if (c >= 'A' && c <= 'F') { out = c - 'A' + 10; return true; }
+        if (c >= '0' && c <= '9') {
+            out = c - '0';
+            return true;
+        }
+        if (c >= 'a' && c <= 'f') {
+            out = c - 'a' + 10;
+            return true;
+        }
+        if (c >= 'A' && c <= 'F') {
+            out = c - 'A' + 10;
+            return true;
+        }
         return false;
     };
     for (size_t i = 0; i < trimmed.size(); i += 2) {
@@ -120,7 +131,8 @@ bool hexToBytes32(const std::string& hex, FfiBytes32* output_bytes) {
     return true;
 }
 
-// Builds JSON { success, tx_hash, error } for both success (result + empty error) and failure (nullptr + errorMessage).
+// Builds JSON { success, tx_hash, error } for both success (result + empty error) and failure (nullptr +
+// errorMessage).
 std::string transferResultToJson(const FfiTransferResult* result, const std::string& errorMessage) {
     nlohmann::json obj = nlohmann::json::object();
     const bool isError = !errorMessage.empty();
@@ -130,12 +142,19 @@ std::string transferResultToJson(const FfiTransferResult* result, const std::str
     return obj.dump();
 }
 
-// Builds JSON { success, tx_hash, secrets, error } for both success (result + empty error) and failure (nullptr + errorMessage) in case of generic transaction.
+// Builds JSON { success, tx_hash, secrets, error } for both success (result + empty error) and failure (nullptr +
+// errorMessage) in case of generic transaction.
 std::string genericTransactionResultToJson(const FfiTransactionResult* result, const std::string& errorMessage) {
     nlohmann::json obj = nlohmann::json::object();
-    const bool isError = !errorMessage.empty();
-    obj[JsonKeys::Success] = !isError && result && result->success;
-    obj[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? std::string(result->tx_hash) : std::string();
+    std::string effectiveError = errorMessage;
+    const bool hasTransactionHash = result && result->tx_hash && result->tx_hash[0] != '\0';
+    if (effectiveError.empty() && (!result || !result->success))
+        effectiveError = "generic transaction was rejected";
+    if (effectiveError.empty() && result && result->success && !hasTransactionHash)
+        effectiveError = "generic transaction returned an empty transaction hash";
+    const bool isError = !effectiveError.empty();
+    obj[JsonKeys::Success] = !isError && result && result->success && hasTransactionHash;
+    obj[JsonKeys::TxHash] = (!isError && hasTransactionHash) ? std::string(result->tx_hash) : std::string();
     std::vector<std::string> secrets;
     if (!isError && result && result->secrets_data) {
         for (uintptr_t i = 0; i < result->secrets_size; ++i) {
@@ -143,7 +162,7 @@ std::string genericTransactionResultToJson(const FfiTransactionResult* result, c
         }
     }
     obj[JsonKeys::Secrets] = secrets;
-    obj[JsonKeys::Error] = errorMessage;
+    obj[JsonKeys::Error] = effectiveError;
     return obj.dump();
 }
 
@@ -244,7 +263,11 @@ bool jsonToFfiPrivateAccountKeys(const std::string& json, FfiPrivateAccountKeys*
 
 // Parses a JSON array of 32-byte hex strings into a contiguous byte buffer of siblings.
 // Returns true on success, with out_len set to the number of siblings and out_bytes sized to out_len*32.
-bool jsonArrayHexToSiblings32(const std::string& json_array_str, std::vector<uint8_t>& out_bytes, uintptr_t& out_len) {
+bool jsonArrayHexToSiblings32(
+    const std::string& json_array_str,
+    std::vector<uint8_t>& out_bytes,
+    uintptr_t& out_len
+) {
     nlohmann::json doc = nlohmann::json::parse(json_array_str, nullptr, false);
     if (doc.is_discarded() || !doc.is_array())
         return false;
@@ -269,9 +292,14 @@ bool jsonArrayHexToSiblings32(const std::string& json_array_str, std::vector<uin
 LEZCoreModule::LEZCoreModule() = default;
 
 LEZCoreModule::~LEZCoreModule() {
+    std::lock_guard<std::mutex> lock(walletMutex);
     if (walletHandle) {
+        const WalletFfiError saveError = static_cast<WalletFfiError>(saveUnlocked());
+        if (saveError != SUCCESS)
+            fprintf(stderr, "~LEZCoreModule: wallet save failed with FFI error %d\n", saveError);
         wallet_ffi_destroy(walletHandle);
         walletHandle = nullptr;
+        openProfile = OpenProfile::None;
     }
 }
 
@@ -280,26 +308,36 @@ std::string LEZCoreModule::name() const {
 }
 
 std::string LEZCoreModule::version() const {
-    return "0.3.0";
+    return "0.5.0";
 }
 
 // === Account Management ===
 
 std::string LEZCoreModule::create_account_public() {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_create_account_public(walletHandle, &id);
     if (error != SUCCESS) {
         fprintf(stderr, "create_account_public: wallet FFI error %d\n", error);
         return {};
     }
+    if (saveUnlocked() != SUCCESS) {
+        fprintf(stderr, "create_account_public: failed to persist wallet\n");
+        return {};
+    }
     return bytes32ToHex(id);
 }
 
 std::string LEZCoreModule::create_account_private() {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 id{};
     const WalletFfiError error = wallet_ffi_create_account_private(walletHandle, &id);
     if (error != SUCCESS) {
         fprintf(stderr, "create_account_private: wallet FFI error %d\n", error);
+        return {};
+    }
+    if (saveUnlocked() != SUCCESS) {
+        fprintf(stderr, "create_account_private: failed to persist wallet\n");
         return {};
     }
     return bytes32ToHex(id);
@@ -443,6 +481,7 @@ std::string LEZCoreModule::account_id_from_base58(const std::string& base58_str)
 // === Blockchain Synchronisation ===
 
 int64_t LEZCoreModule::sync_to_block(const int64_t block_id) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     return wallet_ffi_sync_to_block(walletHandle, static_cast<uint64_t>(block_id));
 }
 
@@ -473,6 +512,7 @@ std::string LEZCoreModule::claim_pinata(
     const std::string& winner_account_id_hex,
     const std::string& solution_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 pinataId{}, winnerId{};
     if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
         fprintf(stderr, "claim_pinata: invalid account id hex\n");
@@ -501,6 +541,7 @@ std::string LEZCoreModule::claim_pinata_private_owned_already_initialized(
     int64_t winner_proof_index,
     const std::string& winner_proof_siblings_json
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 pinataId{}, winnerId{};
     if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
         fprintf(stderr, "claim_pinata_private_owned_already_initialized: invalid account id hex\n");
@@ -508,7 +549,10 @@ std::string LEZCoreModule::claim_pinata_private_owned_already_initialized(
     }
     uint8_t solution[16];
     if (!hexToU128(solution_le16_hex, &solution)) {
-        fprintf(stderr, "claim_pinata_private_owned_already_initialized: solution_le16_hex must be 32 hex characters (16 bytes)\n");
+        fprintf(
+            stderr,
+            "claim_pinata_private_owned_already_initialized: solution_le16_hex must be 32 hex characters (16 bytes)\n"
+        );
         return {};
     }
 
@@ -549,6 +593,7 @@ std::string LEZCoreModule::claim_pinata_private_owned_not_initialized(
     const std::string& winner_account_id_hex,
     const std::string& solution_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 pinataId{}, winnerId{};
     if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
         fprintf(stderr, "claim_pinata_private_owned_not_initialized: invalid account id hex\n");
@@ -556,17 +601,15 @@ std::string LEZCoreModule::claim_pinata_private_owned_not_initialized(
     }
     uint8_t solution[16];
     if (!hexToU128(solution_le16_hex, &solution)) {
-        fprintf(stderr, "claim_pinata_private_owned_not_initialized: solution_le16_hex must be 32 hex characters (16 bytes)\n");
+        fprintf(
+            stderr,
+            "claim_pinata_private_owned_not_initialized: solution_le16_hex must be 32 hex characters (16 bytes)\n"
+        );
         return {};
     }
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_claim_pinata_private_owned_not_initialized(
-        walletHandle,
-        &pinataId,
-        &winnerId,
-        &solution,
-        &result
-    );
+    const WalletFfiError error =
+        wallet_ffi_claim_pinata_private_owned_not_initialized(walletHandle, &pinataId, &winnerId, &solution, &result);
     if (error != SUCCESS) {
         fprintf(stderr, "claim_pinata_private_owned_not_initialized: wallet FFI error %d\n", error);
         return {};
@@ -583,6 +626,7 @@ std::string LEZCoreModule::transfer_public(
     const std::string& to_hex,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_public: invalid account id hex\n");
@@ -611,6 +655,7 @@ std::string LEZCoreModule::transfer_shielded(
     const std::string& to_keys_json,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{};
     if (!hexToBytes32(from_hex, &fromId)) {
         fprintf(stderr, "transfer_shielded: invalid from account id hex\n");
@@ -640,7 +685,8 @@ std::string LEZCoreModule::transfer_shielded(
     const char *key_path = nullptr;
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, key_path, &result);
+    const WalletFfiError error =
+        wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, key_path, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_shielded: wallet FFI error %d\n", error);
@@ -656,6 +702,7 @@ std::string LEZCoreModule::transfer_deshielded(
     const std::string& to_hex,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_deshielded: invalid account id hex\n");
@@ -665,7 +712,9 @@ std::string LEZCoreModule::transfer_deshielded(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_deshielded: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        return transferResultToJson(nullptr, "transfer_deshielded: amount_le16_hex must be 32 hex characters (16 bytes)");
+        return transferResultToJson(
+            nullptr, "transfer_deshielded: amount_le16_hex must be 32 hex characters (16 bytes)"
+        );
     }
 
     FfiTransferResult result{};
@@ -684,6 +733,7 @@ std::string LEZCoreModule::transfer_private(
     const std::string& to_keys_json,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{};
     if (!hexToBytes32(from_hex, &fromId)) {
         fprintf(stderr, "transfer_private: invalid from account id hex\n");
@@ -709,7 +759,8 @@ std::string LEZCoreModule::transfer_private(
     if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
         toIdentifier = randomFfiU128();
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, &result);
+    const WalletFfiError error =
+        wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_private: wallet FFI error %d\n", error);
@@ -725,6 +776,7 @@ std::string LEZCoreModule::transfer_shielded_owned(
     const std::string& to_hex,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_shielded_owned: invalid account id hex\n");
@@ -734,14 +786,17 @@ std::string LEZCoreModule::transfer_shielded_owned(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        return transferResultToJson(nullptr, "transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)");
+        return transferResultToJson(
+            nullptr, "transfer_shielded_owned: amount_le16_hex must be 32 hex characters (16 bytes)"
+        );
     }
 
     // ToDo: Add keycard support
     const char *key_path = nullptr;
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, key_path, &result);
+    const WalletFfiError error =
+        wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, key_path, &result);
     if (error != SUCCESS) {
         fprintf(stderr, "transfer_shielded_owned: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded_owned: wallet FFI error " + std::to_string(error));
@@ -756,6 +811,7 @@ std::string LEZCoreModule::transfer_private_owned(
     const std::string& to_hex,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_private_owned: invalid account id hex\n");
@@ -765,7 +821,9 @@ std::string LEZCoreModule::transfer_private_owned(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_private_owned: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        return transferResultToJson(nullptr, "transfer_private_owned: amount_le16_hex must be 32 hex characters (16 bytes)");
+        return transferResultToJson(
+            nullptr, "transfer_private_owned: amount_le16_hex must be 32 hex characters (16 bytes)"
+        );
     }
 
     FfiTransferResult result{};
@@ -780,6 +838,7 @@ std::string LEZCoreModule::transfer_private_owned(
 }
 
 std::string LEZCoreModule::register_public_account(const std::string& account_id_hex) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "register_public_account: invalid account_id_hex\n");
@@ -803,6 +862,7 @@ std::string LEZCoreModule::bridge_withdraw(
     const std::string& bedrock_account_pk_hex,
     const uint64_t amount
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 fromId{}, bedrockAccountPk{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(bedrock_account_pk_hex, &bedrockAccountPk)) {
         fprintf(stderr, "bridge_withdraw: invalid account id or bedrock account pk hex\n");
@@ -810,8 +870,7 @@ std::string LEZCoreModule::bridge_withdraw(
     }
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_bridge_withdraw(
-        walletHandle, &fromId, amount, &bedrockAccountPk, &result);
+    const WalletFfiError error = wallet_ffi_bridge_withdraw(walletHandle, &fromId, amount, &bedrockAccountPk, &result);
     if (error != SUCCESS) {
         fprintf(stderr, "bridge_withdraw: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "bridge_withdraw: wallet FFI error " + std::to_string(error));
@@ -839,10 +898,8 @@ std::string LEZCoreModule::get_vault_balance(const std::string& owner_account_id
     return balanceLe16ToDecimalString(balance);
 }
 
-std::string LEZCoreModule::vault_claim(
-    const std::string& owner_account_id_hex,
-    const std::string& amount_le16_hex
-) {
+std::string LEZCoreModule::vault_claim(const std::string& owner_account_id_hex, const std::string& amount_le16_hex) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 ownerId{};
     if (!hexToBytes32(owner_account_id_hex, &ownerId)) {
         fprintf(stderr, "vault_claim: invalid owner_account_id_hex\n");
@@ -870,6 +927,7 @@ std::string LEZCoreModule::vault_claim_private(
     const std::string& owner_account_id_hex,
     const std::string& amount_le16_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 ownerId{};
     if (!hexToBytes32(owner_account_id_hex, &ownerId)) {
         fprintf(stderr, "vault_claim_private: invalid owner_account_id_hex\n");
@@ -879,7 +937,9 @@ std::string LEZCoreModule::vault_claim_private(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "vault_claim_private: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        return transferResultToJson(nullptr, "vault_claim_private: amount_le16_hex must be 32 hex characters (16 bytes)");
+        return transferResultToJson(
+            nullptr, "vault_claim_private: amount_le16_hex must be 32 hex characters (16 bytes)"
+        );
     }
 
     FfiTransferResult result{};
@@ -894,6 +954,7 @@ std::string LEZCoreModule::vault_claim_private(
 }
 
 std::string LEZCoreModule::register_private_account(const std::string& account_id_hex) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "register_private_account: invalid account_id_hex\n");
@@ -918,8 +979,7 @@ std::vector<uint8_t> LEZCoreModule::token_elf() {
         return std::vector<uint8_t>{};
     }
 
-    std::vector<uint8_t> result(ffi_program.elf_data,
-                                 ffi_program.elf_data + ffi_program.elf_size);
+    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
 
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
@@ -933,8 +993,7 @@ std::vector<uint8_t> LEZCoreModule::amm_elf() {
         return std::vector<uint8_t>{};
     }
 
-    std::vector<uint8_t> result(ffi_program.elf_data,
-                                 ffi_program.elf_data + ffi_program.elf_size);
+    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
 
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
@@ -948,8 +1007,7 @@ std::vector<uint8_t> LEZCoreModule::ata_elf() {
         return std::vector<uint8_t>{};
     }
 
-    std::vector<uint8_t> result(ffi_program.elf_data,
-                                 ffi_program.elf_data + ffi_program.elf_size);
+    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
 
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
@@ -963,35 +1021,66 @@ std::vector<uint8_t> LEZCoreModule::authenticated_transfer_elf() {
         return std::vector<uint8_t>{};
     }
 
-    std::vector<uint8_t> result(ffi_program.elf_data,
-                                 ffi_program.elf_data + ffi_program.elf_size);
+    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
 
     wallet_ffi_free_ffi_program(&ffi_program);
     return result;
 }
 
 std::string LEZCoreModule::send_generic_public_transaction(
-        const std::vector<std::string>& account_ids,
-        const std::vector<bool>& signing_requirements,
-        const std::vector<uint32_t>& instruction,
-        const std::string& program_id_hex
+    const std::vector<std::string>& account_ids,
+    const std::vector<bool>& signing_requirements,
+    const std::vector<uint32_t>& instruction,
+    const std::string& program_id_hex
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
+
+    if (account_ids.empty())
+        return genericTransactionResultToJson(
+            nullptr, "send_generic_public_transaction: at least one account is required"
+        );
+    if (account_ids.size() != signing_requirements.size())
+        return genericTransactionResultToJson(
+            nullptr, "send_generic_public_transaction: account_ids and signing_requirements must have equal lengths"
+        );
+    if (instruction.empty())
+        return genericTransactionResultToJson(
+            nullptr, "send_generic_public_transaction: instruction must not be empty"
+        );
+    if (!walletHandle)
+        return genericTransactionResultToJson(nullptr, "send_generic_public_transaction: wallet is not open");
+
+    std::vector<uint8_t> program_id_bytes;
+    if (!hexToBytes(program_id_hex, program_id_bytes, 32))
+        return genericTransactionResultToJson(nullptr, "send_generic_public_transaction: invalid program_id_hex");
+
+    std::vector<FfiBytes32> accountIdBytes(account_ids.size());
+    for (size_t i = 0; i < account_ids.size(); ++i) {
+        if (!hexToBytes32(account_ids[i], &accountIdBytes[i]))
+            return genericTransactionResultToJson(
+                nullptr, "send_generic_public_transaction: invalid account_id_hex at index " + std::to_string(i)
+            );
+    }
+
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
+    const auto freeIdentities = [&identities_resolved]() {
+        for (FfiAccountIdentity& identity : identities_resolved)
+            wallet_ffi_free_account_identity(&identity);
+        identities_resolved.clear();
+    };
 
-    for (int i = 0; i < account_ids.size(); ++i) {
+    for (size_t i = 0; i < account_ids.size(); ++i) {
         FfiAccountIdentity acc_identity{};
-
-        FfiBytes32 id{};
-        if (!hexToBytes32(account_ids[i], &id)) {
-            fprintf(stderr, "wallet_ffi_resolve_public_account: invalid account_id_hex");
-            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_public_account: invalid account_id_hex"));
-        }
-
-        WalletFfiError error = wallet_ffi_resolve_public_account(id, signing_requirements[i], &acc_identity);
+        const WalletFfiError error =
+            wallet_ffi_resolve_public_account(accountIdBytes[i], signing_requirements[i], &acc_identity);
         if (error != SUCCESS) {
-            fprintf(stderr, "wallet_ffi_resolve_public_account failed for index %d: wallet FFI error %d\n", i, error);
-            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_public_account: wallet FFI error ") + std::to_string(error));
+            freeIdentities();
+            return genericTransactionResultToJson(
+                nullptr,
+                "send_generic_public_transaction: account resolution failed at index " + std::to_string(i) +
+                    " with wallet FFI error " + std::to_string(error)
+            );
         }
         identities_resolved.push_back(acc_identity);
     }
@@ -1002,11 +1091,6 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const uint32_t* input_instruction_data = instruction.data();
     uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
 
-    std::vector<uint8_t> program_id_bytes;
-    if (!hexToBytes(program_id_hex, program_id_bytes, 32)) {
-        fprintf(stderr, "send_generic_public_transaction: invalid program_id_hex");
-        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: invalid program_id_hex"));
-    }
     FfiProgramId program_id{};
     memcpy(program_id.data, program_id_bytes.data(), 32);
 
@@ -1022,13 +1106,15 @@ std::string LEZCoreModule::send_generic_public_transaction(
         &result
     );
 
-    for (FfiAccountIdentity& acc_identity : identities_resolved) {
-        wallet_ffi_free_account_identity(&acc_identity);
-    }
+    freeIdentities();
 
     if (error != SUCCESS) {
         fprintf(stderr, "send_generic_public_transaction: wallet FFI error %d\n", error);
-        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: wallet FFI error ") + std::to_string(error));
+        const std::string resultJson = genericTransactionResultToJson(
+            nullptr, std::string("send_generic_public_transaction: wallet FFI error ") + std::to_string(error)
+        );
+        wallet_ffi_free_transaction_result(&result);
+        return resultJson;
     }
     std::string resultJson = genericTransactionResultToJson(&result, std::string());
     wallet_ffi_free_transaction_result(&result);
@@ -1036,11 +1122,12 @@ std::string LEZCoreModule::send_generic_public_transaction(
 }
 
 std::string LEZCoreModule::send_generic_private_transaction(
-        const std::vector<std::string>& account_ids,
-        const std::vector<uint32_t>& instruction,
-        const std::vector<uint8_t>& program_elf,
-        const std::vector<std::vector<uint8_t>>& program_dependencies
+    const std::vector<std::string>& account_ids,
+    const std::vector<uint32_t>& instruction,
+    const std::vector<uint8_t>& program_elf,
+    const std::vector<std::vector<uint8_t>>& program_dependencies
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
 
@@ -1050,13 +1137,17 @@ std::string LEZCoreModule::send_generic_private_transaction(
         FfiBytes32 id{};
         if (!hexToBytes32(account_ids[i], &id)) {
             fprintf(stderr, "wallet_ffi_resolve_private_account: invalid account_id_hex");
-            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_private_account: invalid account_id_hex"));
+            return transferResultToJson(
+                nullptr, std::string("wallet_ffi_resolve_private_account: invalid account_id_hex")
+            );
         }
 
         WalletFfiError error = wallet_ffi_resolve_private_account(walletHandle, id, &acc_identity);
         if (error != SUCCESS) {
             fprintf(stderr, "wallet_ffi_resolve_private_account failed for index %d: wallet FFI error %d\n", i, error);
-            return transferResultToJson(nullptr, std::string("wallet_ffi_resolve_private_account: wallet FFI error ") + std::to_string(error));
+            return transferResultToJson(
+                nullptr, std::string("wallet_ffi_resolve_private_account: wallet FFI error ") + std::to_string(error)
+            );
         }
         identities_resolved.push_back(acc_identity);
     }
@@ -1117,31 +1208,30 @@ std::string LEZCoreModule::send_generic_private_transaction(
 
     if (error != SUCCESS) {
         fprintf(stderr, "send_generic_private_transaction: wallet FFI error %d\n", error);
-        return transferResultToJson(nullptr, std::string("send_generic_private_transaction: wallet FFI error ") + std::to_string(error));
+        return transferResultToJson(
+            nullptr, std::string("send_generic_private_transaction: wallet FFI error ") + std::to_string(error)
+        );
     }
     std::string resultJson = genericTransactionResultToJson(&result, std::string());
     wallet_ffi_free_transaction_result(&result);
     return resultJson;
 }
 
-std::string LEZCoreModule::send_program_deployment_transaction(
-        const std::vector<uint8_t>& program_elf
-) {
+std::string LEZCoreModule::send_program_deployment_transaction(const std::vector<uint8_t>& program_elf) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     FfiTransactionResult result {};
 
     const uint8_t *program_elf_data = program_elf.data();
     uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
 
-    const WalletFfiError error = wallet_ffi_program_deployment(
-        walletHandle, 
-        program_elf_data,
-        program_elf_size,
-        &result
-    );
+    const WalletFfiError error =
+        wallet_ffi_program_deployment(walletHandle, program_elf_data, program_elf_size, &result);
 
     if (error != SUCCESS) {
         fprintf(stderr, "send_program_deployment_transaction: wallet FFI error %d\n", error);
-        return transferResultToJson(nullptr, std::string("send_program_deployment_transaction: wallet FFI error ") + std::to_string(error));
+        return transferResultToJson(
+            nullptr, std::string("send_program_deployment_transaction: wallet FFI error ") + std::to_string(error)
+        );
     }
     std::string resultJson = genericTransactionResultToJson(&result, std::string());
     wallet_ffi_free_transaction_result(&result);
@@ -1173,42 +1263,371 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
 // === Wallet Lifecycle ===
 
+void LEZCoreModule::onContextReady() {
+    std::lock_guard<std::mutex> lock(walletMutex);
+
+    const std::filesystem::path persistenceRoot(instancePersistencePath());
+    if (persistenceRoot.empty()) {
+        defaultProfileRoot.clear();
+        defaultConfigPath.clear();
+        defaultStoragePath.clear();
+        defaultStatisticsPath.clear();
+        lastErrorCode = "context_unavailable";
+        lastError = "The host did not provide an instance persistence path";
+        return;
+    }
+
+    const std::filesystem::path nextProfileRoot = persistenceRoot / "default";
+    if (walletHandle && !defaultProfileRoot.empty() && nextProfileRoot != defaultProfileRoot) {
+        lastErrorCode = "context_changed";
+        lastError = "The host persistence context changed while a wallet was open";
+        return;
+    }
+
+    defaultProfileRoot = nextProfileRoot;
+    defaultConfigPath = defaultProfileRoot / "config.json";
+    defaultStoragePath = defaultProfileRoot / "storage.json";
+    defaultStatisticsPath = defaultProfileRoot / "statistics.json";
+    clearLifecycleError();
+}
+
+std::string LEZCoreModule::lifecycleEnvelope(
+    const bool success,
+    const std::string& state,
+    const std::string& error_code,
+    const std::string& error,
+    const std::string& mnemonic
+) const {
+    nlohmann::json result = {
+        {"success", success},
+        {"state", state},
+        {"profile", "default"},
+        {"error_code", error_code},
+        {"error", error},
+    };
+    if (!mnemonic.empty())
+        result["mnemonic"] = mnemonic;
+    return result.dump();
+}
+
+std::string LEZCoreModule::failLifecycle(const std::string& error_code, const std::string& error) {
+    lastErrorCode = error_code;
+    lastError = error;
+    return lifecycleEnvelope(false, "error", error_code, error);
+}
+
+std::string LEZCoreModule::rejectLifecycle(const std::string& error_code, const std::string& error) const {
+    return lifecycleEnvelope(false, "error", error_code, error);
+}
+
+std::string LEZCoreModule::failLifecycleAfterRollback(
+    const std::string& error_code,
+    const std::string& error
+) {
+    std::string rollbackError;
+    if (!rollbackDefaultProfile(rollbackError))
+        return failLifecycle("rollback_failed", rollbackError);
+    return failLifecycle(error_code, error);
+}
+
+void LEZCoreModule::clearLifecycleError() {
+    lastErrorCode.clear();
+    lastError.clear();
+}
+
+bool LEZCoreModule::defaultProfileComplete() const {
+    if (defaultProfileRoot.empty())
+        return false;
+
+    std::error_code error;
+    const bool hasConfig = std::filesystem::is_regular_file(defaultConfigPath, error);
+    if (error)
+        return false;
+    const bool hasStorage = std::filesystem::is_regular_file(defaultStoragePath, error);
+    return !error && hasConfig && hasStorage;
+}
+
+bool LEZCoreModule::defaultProfileHasArtifacts() const {
+    if (defaultProfileRoot.empty())
+        return false;
+    std::error_code error;
+    const bool exists = std::filesystem::exists(defaultProfileRoot, error);
+    return error || exists;
+}
+
+bool LEZCoreModule::ensureDefaultProfileDirectory(std::string& error) {
+    std::error_code filesystemError;
+    if (!std::filesystem::is_directory(defaultProfileRoot.parent_path(), filesystemError)) {
+        error = filesystemError ? "The host persistence directory is unavailable: " + filesystemError.message()
+                                : "The host persistence directory does not exist";
+        return false;
+    }
+    if (!std::filesystem::create_directory(defaultProfileRoot, filesystemError)) {
+        if (!filesystemError)
+            error = "The default wallet profile appeared while it was being created";
+        else
+            error = "Unable to create the default wallet profile directory: " + filesystemError.message();
+        return false;
+    }
+
+    std::filesystem::permissions(
+        defaultProfileRoot,
+        std::filesystem::perms::owner_all,
+        std::filesystem::perm_options::replace,
+        filesystemError
+    );
+    if (filesystemError) {
+        const std::string permissionsError = filesystemError.message();
+        std::string rollbackError;
+        if (!rollbackDefaultProfile(rollbackError))
+            error = rollbackError;
+        else
+            error = "Unable to restrict the default wallet profile directory: " + permissionsError;
+        return false;
+    }
+    return true;
+}
+
+bool LEZCoreModule::rollbackDefaultProfile(std::string& rollbackError) {
+    std::error_code filesystemError;
+    std::filesystem::remove_all(defaultProfileRoot, filesystemError);
+    if (!filesystemError)
+        return true;
+    rollbackError = "The incomplete default wallet profile could not be removed: " + filesystemError.message();
+    return false;
+}
+
+int64_t LEZCoreModule::saveUnlocked() {
+    if (!walletHandle)
+        return INTERNAL_ERROR;
+    return wallet_ffi_save(walletHandle);
+}
+
+std::string LEZCoreModule::wallet_status() {
+    std::lock_guard<std::mutex> lock(walletMutex);
+
+    if (!isContextReady() || defaultProfileRoot.empty())
+        return lifecycleEnvelope(
+            false, "error", "context_unavailable", "The host instance persistence path is unavailable"
+        );
+    if (walletHandle && openProfile == OpenProfile::External)
+        return lifecycleEnvelope(
+            false, "error", "non_default_wallet_open", "A non-default wallet profile is already open"
+        );
+    if (walletHandle && openProfile == OpenProfile::Default)
+        return lifecycleEnvelope(true, "open");
+    if (!lastErrorCode.empty())
+        return lifecycleEnvelope(false, "error", lastErrorCode, lastError);
+    if (defaultProfileComplete())
+        return lifecycleEnvelope(true, "closed");
+    if (defaultProfileHasArtifacts())
+        return lifecycleEnvelope(false, "error", "profile_incomplete", "The default wallet profile is incomplete");
+    return lifecycleEnvelope(true, "closed");
+}
+
+std::string LEZCoreModule::open_default() {
+    std::lock_guard<std::mutex> lock(walletMutex);
+
+    if (!isContextReady() || defaultProfileRoot.empty())
+        return rejectLifecycle("context_unavailable", "The host instance persistence path is unavailable");
+    if (walletHandle && openProfile == OpenProfile::Default) {
+        clearLifecycleError();
+        return lifecycleEnvelope(true, "open");
+    }
+    if (walletHandle)
+        return rejectLifecycle("wallet_already_open", "A different wallet profile is already open");
+    if (!defaultProfileComplete()) {
+        if (defaultProfileHasArtifacts())
+            return rejectLifecycle("profile_incomplete", "The default wallet profile is incomplete");
+        return rejectLifecycle("profile_not_found", "The default wallet profile does not exist");
+    }
+
+    WalletHandle* opened = wallet_ffi_open(
+        defaultConfigPath.string().c_str(), defaultStoragePath.string().c_str(), defaultStatisticsPath.string().c_str()
+    );
+    if (!opened)
+        return failLifecycle("open_failed", "The wallet library could not open the default profile");
+
+    walletHandle = opened;
+    openProfile = OpenProfile::Default;
+    clearLifecycleError();
+    return lifecycleEnvelope(true, "open");
+}
+
+std::string LEZCoreModule::create_default(const std::string& password) {
+    std::lock_guard<std::mutex> lock(walletMutex);
+
+    if (password.empty())
+        return rejectLifecycle("invalid_password", "A non-empty wallet password is required");
+    if (!isContextReady() || defaultProfileRoot.empty())
+        return rejectLifecycle("context_unavailable", "The host instance persistence path is unavailable");
+    if (walletHandle)
+        return rejectLifecycle("wallet_already_open", "A wallet profile is already open");
+    if (defaultProfileHasArtifacts())
+        return rejectLifecycle("profile_exists", "The default wallet profile already exists");
+
+    std::string directoryError;
+    if (!ensureDefaultProfileDirectory(directoryError))
+        return failLifecycle("profile_create_failed", directoryError);
+
+    FfiCreateWalletOutput output = wallet_ffi_create_new(
+        defaultConfigPath.string().c_str(),
+        defaultStoragePath.string().c_str(),
+        defaultStatisticsPath.string().c_str(),
+        password.c_str()
+    );
+    if (!output.wallet || !output.mnemonic) {
+        if (output.wallet)
+            wallet_ffi_destroy(output.wallet);
+        if (output.mnemonic)
+            wallet_ffi_free_string(output.mnemonic);
+        return failLifecycleAfterRollback("create_failed", "The wallet library could not create the default profile");
+    }
+
+    walletHandle = output.wallet;
+    openProfile = OpenProfile::Default;
+    const std::string mnemonic(output.mnemonic);
+    wallet_ffi_free_string(output.mnemonic);
+
+    const int64_t saveError = saveUnlocked();
+    if (saveError != SUCCESS) {
+        wallet_ffi_destroy(walletHandle);
+        walletHandle = nullptr;
+        openProfile = OpenProfile::None;
+        return failLifecycleAfterRollback(
+            "save_failed", "The wallet library could not persist the new default profile"
+        );
+    }
+
+    clearLifecycleError();
+    return lifecycleEnvelope(true, "open", {}, {}, mnemonic);
+}
+
+std::string LEZCoreModule::restore_default(
+    const std::string& mnemonic,
+    const std::string& password,
+    const uint32_t depth
+) {
+    std::lock_guard<std::mutex> lock(walletMutex);
+
+    if (mnemonic.empty())
+        return rejectLifecycle("invalid_mnemonic", "A non-empty mnemonic is required");
+    if (password.empty())
+        return rejectLifecycle("invalid_password", "A non-empty wallet password is required");
+    if (depth > MAX_RESTORE_DEPTH)
+        return rejectLifecycle("invalid_depth", "Restore depth must be between 0 and 10");
+    if (!isContextReady() || defaultProfileRoot.empty())
+        return rejectLifecycle("context_unavailable", "The host instance persistence path is unavailable");
+    if (walletHandle)
+        return rejectLifecycle("wallet_already_open", "A wallet profile is already open");
+    if (defaultProfileHasArtifacts())
+        return rejectLifecycle("profile_exists", "The default wallet profile already exists");
+
+    std::string directoryError;
+    if (!ensureDefaultProfileDirectory(directoryError))
+        return failLifecycle("profile_create_failed", directoryError);
+
+    FfiCreateWalletOutput output = wallet_ffi_create_new(
+        defaultConfigPath.string().c_str(),
+        defaultStoragePath.string().c_str(),
+        defaultStatisticsPath.string().c_str(),
+        password.c_str()
+    );
+    if (output.mnemonic)
+        wallet_ffi_free_string(output.mnemonic);
+    if (!output.wallet) {
+        return failLifecycleAfterRollback(
+            "create_failed", "The wallet library could not initialize the default profile for restoration"
+        );
+    }
+
+    walletHandle = output.wallet;
+    openProfile = OpenProfile::Default;
+    const WalletFfiError restoreError =
+        wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
+    if (restoreError != SUCCESS) {
+        wallet_ffi_destroy(walletHandle);
+        walletHandle = nullptr;
+        openProfile = OpenProfile::None;
+        return failLifecycleAfterRollback(
+            "restore_failed", "The wallet library could not restore the default profile"
+        );
+    }
+
+    const int64_t saveError = saveUnlocked();
+    if (saveError != SUCCESS) {
+        wallet_ffi_destroy(walletHandle);
+        walletHandle = nullptr;
+        openProfile = OpenProfile::None;
+        return failLifecycleAfterRollback(
+            "save_failed", "The wallet library could not persist the restored default profile"
+        );
+    }
+
+    clearLifecycleError();
+    return lifecycleEnvelope(true, "open");
+}
+
 std::string LEZCoreModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
     const std::string& statistics_path,
     const std::string& password
 ) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     if (walletHandle) {
         fprintf(stderr, "create_new: wallet is already open\n");
         return {};
     }
 
-    FfiCreateWalletOutput create_output = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), statistics_path.c_str(), password.c_str());
-    if (!create_output.wallet) {
+    FfiCreateWalletOutput create_output =
+        wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), statistics_path.c_str(), password.c_str());
+    if (!create_output.wallet || !create_output.mnemonic) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
+        if (create_output.wallet)
+            wallet_ffi_destroy(create_output.wallet);
+        if (create_output.mnemonic)
+            wallet_ffi_free_string(create_output.mnemonic);
         return {};
     }
 
     walletHandle = create_output.wallet;
+    openProfile = OpenProfile::External;
     std::string mnemonic(create_output.mnemonic);
 
     wallet_ffi_free_string(create_output.mnemonic);
+
+    if (saveUnlocked() != SUCCESS) {
+        fprintf(stderr, "create_new: failed to persist wallet\n");
+        wallet_ffi_destroy(walletHandle);
+        walletHandle = nullptr;
+        openProfile = OpenProfile::None;
+        return {};
+    }
 
     return mnemonic;
 }
 
 int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
+    std::lock_guard<std::mutex> lock(walletMutex);
+    if (depth > MAX_RESTORE_DEPTH) {
+        fprintf(stderr, "restore_storage: restore depth must be between 0 and 10\n");
+        return INTERNAL_ERROR;
+    }
     const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
     if (error != SUCCESS) {
         fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
         return error;
     }
-
-    return SUCCESS;
+    return saveUnlocked();
 }
 
-int64_t LEZCoreModule::open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path) {
+int64_t LEZCoreModule::open(
+    const std::string& config_path,
+    const std::string& storage_path,
+    const std::string& statistics_path
+) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
         return INTERNAL_ERROR;
@@ -1220,11 +1639,13 @@ int64_t LEZCoreModule::open(const std::string& config_path, const std::string& s
         return INTERNAL_ERROR;
     }
 
+    openProfile = OpenProfile::External;
     return SUCCESS;
 }
 
 int64_t LEZCoreModule::save() {
-    return wallet_ffi_save(walletHandle);
+    std::lock_guard<std::mutex> lock(walletMutex);
+    return saveUnlocked();
 }
 
 // === Configuration ===
@@ -1246,10 +1667,7 @@ std::string LEZCoreModule::get_sequencer_addr() {
 bool LEZCoreModule::check_label_available(const std::string& label) {
     const char* label_c = label.c_str();
 
-    LabelAvailability label_check = wallet_ffi_check_label_available(
-        walletHandle,
-        label_c
-    );
+    LabelAvailability label_check = wallet_ffi_check_label_available(walletHandle, label_c);
 
     if (label_check.error != SUCCESS) {
         fprintf(stderr, "check_label_available: wallet FFI error %d\n", label_check.error);
@@ -1260,6 +1678,7 @@ bool LEZCoreModule::check_label_available(const std::string& label) {
 }
 
 int64_t LEZCoreModule::add_label(const std::string& label, const std::string& account_id_hex, bool is_private) {
+    std::lock_guard<std::mutex> lock(walletMutex);
     const char* label_c = label.c_str();
 
     FfiBytes32 id{};
@@ -1273,18 +1692,16 @@ int64_t LEZCoreModule::add_label(const std::string& label, const std::string& ac
     WalletFfiError error = wallet_ffi_add_label(walletHandle, label_c, acc_id_with_privacy);
     if (error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_add_label failed : wallet FFI error %d\n", error);
+        return error;
     }
 
-    return SUCCESS;
+    return saveUnlocked();
 }
 
 std::string LEZCoreModule::resolve_label(const std::string& label) {
     const char* label_c = label.c_str();
 
-    AccountIdResolvedFromLabel acc_id_res = wallet_ffi_resolve_label(
-        walletHandle,
-        label_c
-    );
+    AccountIdResolvedFromLabel acc_id_res = wallet_ffi_resolve_label(walletHandle, label_c);
 
     if (acc_id_res.error != SUCCESS) {
         fprintf(stderr, "wallet_ffi_resolve_label failed : wallet FFI error %d\n", acc_id_res.error);

@@ -24,13 +24,13 @@ intro: |
      verifying the module actually runs and round-trips real values through
      `wallet_ffi`.
 
-  The methods exercised here — `name`/`version` and the base58 account-id codec
-  (`account_id_to_base58` / `account_id_from_base58`) — are the module's
-  deterministic, **offline** surface: they need neither an open wallet nor a live
-  sequencer, so a green run is reproducible in CI. The stateful operations
-  (creating accounts, transfers, sync, pinata claims) require a running
-  sequencer and network, and are covered by the module's unit tests (mocked
-  `wallet_ffi`) and integration tests (real `wallet_ffi`) instead.
+  The methods exercised here — `name`/`version`, lifecycle status and validation,
+  generic-submission validation, and the base58 account-id codec — are the
+  module's deterministic, **offline** surface. Invalid lifecycle and transaction
+  requests are rejected before wallet FFI, so a green run is reproducible in CI.
+  Stateful operations (creating accounts, transfers, sync, pinata claims) require
+  a running sequencer and network, and are covered by the module's unit tests
+  (mocked `wallet_ffi`) and opt-in integration tests (real `wallet_ffi`) instead.
 
   Because the module is built from the commit under test and then loaded and
   called through a real `logoscore` daemon, a green run is real evidence that
@@ -97,17 +97,22 @@ sections:
       [`logos-module-builder`](https://github.com/logos-co/logos-module-builder)
       exposes a ready-to-install `#lgx`.
 
-      > The `{release}` in the URL is what pins the build to a specific commit: the
-      > doc-test runner expands it to a concrete ref. Locally that is this
-      > checkout's `HEAD` (see `run.sh`); in CI it is the commit being tested. With
-      > no pin it falls back to the latest `master`.
+      > CI builds the already-checked-out pull-request tree through a local flake
+      > path. Outside CI, the `{release}` in the fallback URL pins the build to a
+      > specific commit: `run.sh` expands it to this checkout's `HEAD`. With no
+      > local source or pin it falls back to the latest `master`.
     steps:
       - title: "Build the module's .lgx"
         text: |
           Build the `#lgx` output and link it as `./lez-lgx`. (This compiles the
           module and the `wallet_ffi` library it depends on through Nix, so the
           first build is slow.)
-        run: "nix build 'github:logos-blockchain/logos-execution-zone-module{release}#lgx' -o lez-lgx"
+        run: |
+          if [ -n "${LOGOS_EXECUTION_ZONE_MODULE_SOURCE:-}" ]; then
+            nix build "$LOGOS_EXECUTION_ZONE_MODULE_SOURCE#lgx" -o lez-lgx
+          else
+            nix build 'github:logos-blockchain/logos-execution-zone-module{release}#lgx' -o lez-lgx
+          fi
         code_block: |
           # From inside the clone this is simply: nix build '.#lgx'
           nix build 'github:logos-blockchain/logos-execution-zone-module{release}#lgx' -o lez-lgx
@@ -158,7 +163,27 @@ sections:
           The `-D` flag starts the daemon. The client subcommands below connect to
           this running process via the config written under `~/.logoscore/`.
 
-      - run: "sleep 3"
+      - title: "Wait for daemon readiness"
+        text: |
+          Startup time varies with host load, so poll the client status for up to
+          60 seconds instead of assuming a fixed delay. If readiness never arrives,
+          print both the last client response and daemon log before failing.
+        run: |
+          for attempt in $(seq 1 60); do
+            if ./logos/bin/logoscore status > daemon-status.txt 2>&1; then
+              cat daemon-status.txt
+              exit 0
+            fi
+            sleep 1
+          done
+          cat daemon-status.txt
+          cat logs.txt
+          exit 1
+        code_block: |
+          for attempt in $(seq 1 60); do
+            logoscore status && break
+            sleep 1
+          done
 
       - title: "Inspect the startup log"
         text: "Review the daemon's startup output:"
@@ -213,12 +238,48 @@ sections:
 
       - title: "Read the module version"
         text: |
-          `version` returns the module's semantic version (`0.2.0`), matching
+          `version` returns the module's semantic version (`0.5.0`), matching
           `metadata.json`:
         run: "./logos/bin/logoscore call lez_core version"
         code_block: "logoscore call lez_core version"
         expect_contains:
-          - '"result":"0.3.0"'
+          - '"result":"0.5.0"'
+
+      - title: "Inspect the shared default wallet lifecycle"
+        text: |
+          The host injects the module's private persistence directory before the
+          first dispatch. These calls prove all four lifecycle methods survive
+          code generation and return typed JSON envelopes through the runtime.
+          Empty onboarding inputs are rejected before creating profile files or
+          invoking the wallet library.
+        run: |
+          ./logos/bin/logoscore call lez_core wallet_status
+          ./logos/bin/logoscore call lez_core open_default
+          ./logos/bin/logoscore call lez_core create_default ''
+          ./logos/bin/logoscore call lez_core restore_default '' '' 0
+        code_block: |
+          logoscore call lez_core wallet_status
+          logoscore call lez_core open_default
+          logoscore call lez_core create_default ''
+          logoscore call lez_core restore_default '' '' 0
+        expect_contains:
+          - '"result"'
+          - "profile"
+          - "invalid_password"
+          - "invalid_mnemonic"
+
+      - title: "Validate a generic public submission through the runtime"
+        text: |
+          Vector arguments cross the generated module/RPC boundary as native JSON.
+          The empty-account request is rejected by the module before wallet FFI,
+          while still returning the generic transaction envelope.
+        run: "./logos/bin/logoscore call lez_core send_generic_public_transaction 'json:[]' 'json:[]' 'json:[1]' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        code_block: "logoscore call lez_core send_generic_public_transaction 'json:[]' 'json:[]' 'json:[1]' aaaaaaaa...aaaa"
+        expect_contains:
+          - "success"
+          - "tx_hash"
+          - "secrets"
+          - "at least one account"
 
       - title: "Encode an account id to base58"
         text: |
