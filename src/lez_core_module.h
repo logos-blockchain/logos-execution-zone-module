@@ -34,7 +34,7 @@ public:
     int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path);
     int64_t save();
 
-    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth);
+    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth);
 
     // === Account Management ===
     std::string create_account_public();
@@ -77,8 +77,8 @@ public:
     std::vector<uint8_t> amm_elf();
     std::vector<uint8_t> ata_elf();
 
-    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint32_t>& instruction, const std::string& program_id_hex);
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint32_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint64_t>& instruction, const std::string& program_id_hex);
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint64_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
     std::string send_program_deployment_transaction(const std::vector<uint8_t>& program_elf);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
