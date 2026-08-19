@@ -5,10 +5,13 @@
 #include <string>
 
 #include <logos_json.h>
+#include <logos_module_context.h>
 
 extern "C" {
 #include <wallet_ffi.h>
 }
+
+constexpr const char* LEZ_NO_WALLET_DIR = "-";
 
 // Universal (Qt-free) execution-zone core module. The Qt glue (provider
 // object + plugin) is generated from this header by logos-cpp-generator, which
@@ -18,7 +21,7 @@ extern "C" {
 // NOTE: the generator parses this header line-by-line and only recognises a
 // method when its declaration ends with ';' on a single line. Keep every
 // method declaration on ONE line — multi-line signatures are silently dropped.
-class LEZCoreModule {
+class LEZCoreModule : public LogosModuleContext {
 public:
     LEZCoreModule();
     ~LEZCoreModule();
@@ -28,8 +31,8 @@ public:
 
     std::string name() const;
     std::string version() const;
+    std::string wallet_dir();
 
-    // === Wallet Lifecycle ===
     std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path, const std::string& password);
     int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path);
     int64_t save();
