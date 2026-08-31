@@ -37,7 +37,7 @@ public:
     int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path);
     int64_t save();
 
-    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth);
+    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth);
 
     // === Account Management ===
     std::string create_account_public();
@@ -80,11 +80,23 @@ public:
     std::vector<uint8_t> amm_elf();
     std::vector<uint8_t> ata_elf();
 
-    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint32_t>& instruction, const std::string& program_id_hex);
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint32_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    // `instruction` uses a byte-string (`bstr`) IPC type so the auto-generated
+    // Qt/QtRO glue can serialize it across the module process boundary. Declaring
+    // it as std::vector<uint32_t> makes the header->LIDL generator fall back to an
+    // opaque `any` with no QDataStream operators, silently dropping every argument
+    // over QtRO. It carries the little-endian bytes of the RISC Zero u32 words.
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex);
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
     std::string send_program_deployment_transaction(const std::vector<uint8_t>& program_elf);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
+
+    // === Multi-sequencer ===
+
+    int64_t client_rotation();
+
+    int64_t add_sequencer(const std::string& addr, const std::string& user, const std::string& password);
+    int64_t remove_sequencer(const std::string& addr);
 
     // === Bridge (L1 Bedrock <-> L2) ===
     std::string bridge_withdraw(const std::string& from_hex, const std::string& bedrock_account_pk_hex, uint64_t amount);
@@ -96,6 +108,12 @@ public:
 
     // === Configuration ===
     std::string get_sequencer_addr();
+
+    uint64_t get_distribution_limit();
+    uint64_t get_callibration_limit();
+
+    int64_t set_distribution_limit(uint64_t distribution_limit);
+    int64_t set_callibration_limit(uint64_t callibration_limit);
 
     // === Labels ===
     bool check_label_available(const std::string& label);

@@ -497,6 +497,29 @@ WalletFfiError wallet_ffi_poll_transaction_status(WalletHandle *handle, FfiBytes
     return static_cast<WalletFfiError>(err);
 }
 
+// === Multi-sequencer ===
+
+WalletFfiError wallet_ffi_client_rotation(WalletHandle *handle) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_client_rotation");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_client_rotation");
+    return static_cast<WalletFfiError>(err);
+}
+
+WalletFfiError wallet_ffi_remove_sequencer(WalletHandle *handle, const char *addr) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_remove_sequencer");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_remove_sequencer");
+    return static_cast<WalletFfiError>(err);
+}
+
+WalletFfiError wallet_ffi_add_sequencer(WalletHandle *handle,
+                                             const char *addr,
+                                             const char *user,
+                                             const char *password) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_add_sequencer");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_add_sequencer");
+    return static_cast<WalletFfiError>(err);
+}
+
 // === Bridge (L1 Bedrock <-> L2) ===
 
 WalletFfiError wallet_ffi_bridge_withdraw(
@@ -539,6 +562,43 @@ char* wallet_ffi_get_sequencer_addr(WalletHandle*) {
     const char* addr = LOGOS_CMOCK_RETURN_STRING("wallet_ffi_get_sequencer_addr");
     return strdup((addr && *addr) ? addr : "127.0.0.1:3000");
 }
+
+WalletFfiError wallet_ffi_get_callibration_limit(WalletHandle *handle, uintptr_t *callibration_limit) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_get_callibration_limit");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_get_callibration_limit");
+
+    if (err == 0 && callibration_limit) {
+        const uintptr_t value = static_cast<uintptr_t>(LOGOS_CMOCK_RETURN(int, "get_callibration_limit_value"));
+        *callibration_limit = value;
+    }
+
+    return static_cast<WalletFfiError>(err);
+}
+
+WalletFfiError wallet_ffi_get_distribution_limit(WalletHandle *handle, uintptr_t *distribution_limit){
+    LOGOS_CMOCK_RECORD("wallet_ffi_get_distribution_limit");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_get_distribution_limit");
+
+    if (err == 0 && distribution_limit) {
+        const uintptr_t value = static_cast<uintptr_t>(LOGOS_CMOCK_RETURN(int, "distribution_limit_value"));
+        *distribution_limit = value;
+    }
+
+    return static_cast<WalletFfiError>(err);
+}
+
+WalletFfiError wallet_ffi_set_callibration_limit(WalletHandle *handle, uintptr_t callibration_limit) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_set_callibration_limit");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_set_callibration_limit");
+    return static_cast<WalletFfiError>(err);
+}
+
+WalletFfiError wallet_ffi_set_distribution_limit(WalletHandle *handle, uintptr_t distribution_limit){
+    LOGOS_CMOCK_RECORD("wallet_ffi_set_distribution_limit");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_set_distribution_limit");
+    return static_cast<WalletFfiError>(err);
+}
+
 
 // === Labels === 
 
