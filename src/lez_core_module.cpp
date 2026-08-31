@@ -120,6 +120,21 @@ bool hexToBytes32(const std::string& hex, FfiBytes32* output_bytes) {
     return true;
 }
 
+// The module API declares instruction words uint64_t because LIDL numbers are
+// 64-bit only, while the wallet FFI takes uint32_t words. Narrow here, refusing
+// a word that does not fit rather than truncating it into a different
+// instruction.
+bool narrowInstructionWords(const std::vector<uint64_t>& instruction, std::vector<uint32_t>& output) {
+    output.clear();
+    output.reserve(instruction.size());
+    for (const uint64_t word : instruction) {
+        if (word > UINT32_MAX)
+            return false;
+        output.push_back(static_cast<uint32_t>(word));
+    }
+    return true;
+}
+
 // Builds JSON { success, tx_hash, error } for both success (result + empty error) and failure (nullptr + errorMessage).
 std::string transferResultToJson(const FfiTransferResult* result, const std::string& errorMessage) {
     nlohmann::json obj = nlohmann::json::object();
@@ -981,9 +996,15 @@ std::vector<uint8_t> LEZCoreModule::authenticated_transfer_elf() {
 std::string LEZCoreModule::send_generic_public_transaction(
         const std::vector<std::string>& account_ids,
         const std::vector<bool>& signing_requirements,
-        const std::vector<uint32_t>& instruction,
+        const std::vector<uint64_t>& instruction,
         const std::string& program_id_hex
 ) {
+    std::vector<uint32_t> instruction_words;
+    if (!narrowInstructionWords(instruction, instruction_words)) {
+        fprintf(stderr, "send_generic_public_transaction: instruction word exceeds 32 bits\n");
+        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: instruction word exceeds 32 bits"));
+    }
+
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
 
@@ -1007,8 +1028,8 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const FfiAccountIdentity *account_identities = identities_resolved.data();
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
-    const uint32_t* input_instruction_data = instruction.data();
-    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+    const uint32_t* input_instruction_data = instruction_words.data();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction_words.size());
 
     std::vector<uint8_t> program_id_bytes;
     if (!hexToBytes(program_id_hex, program_id_bytes, 32)) {
@@ -1045,10 +1066,16 @@ std::string LEZCoreModule::send_generic_public_transaction(
 
 std::string LEZCoreModule::send_generic_private_transaction(
         const std::vector<std::string>& account_ids,
-        const std::vector<uint32_t>& instruction,
+        const std::vector<uint64_t>& instruction,
         const std::vector<uint8_t>& program_elf,
         const std::vector<std::vector<uint8_t>>& program_dependencies
 ) {
+    std::vector<uint32_t> instruction_words;
+    if (!narrowInstructionWords(instruction, instruction_words)) {
+        fprintf(stderr, "send_generic_private_transaction: instruction word exceeds 32 bits\n");
+        return transferResultToJson(nullptr, std::string("send_generic_private_transaction: instruction word exceeds 32 bits"));
+    }
+
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
 
@@ -1072,8 +1099,8 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const FfiAccountIdentity *account_identities = identities_resolved.data();
     uintptr_t account_identities_size = static_cast<uintptr_t>(identities_resolved.size());
 
-    const uint32_t* input_instruction_data = instruction.data();
-    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
+    const uint32_t* input_instruction_data = instruction_words.data();
+    uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction_words.size());
 
     FfiProgram main_program {};
 
@@ -1206,8 +1233,13 @@ std::string LEZCoreModule::create_new(
     return mnemonic;
 }
 
-int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth) {
-    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), depth);
+int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth) {
+    if (depth > UINT32_MAX) {
+        fprintf(stderr, "restore_storage: depth exceeds 32 bits\n");
+        return INVALID_TYPE_CONVERSION;
+    }
+
+    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), static_cast<uint32_t>(depth));
     if (error != SUCCESS) {
         fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
         return error;
