@@ -390,11 +390,6 @@ WalletFfiError wallet_ffi_transfer_private_owned(
     return fillTransferResult("wallet_ffi_transfer_private_owned", out_result);
 }
 
-WalletFfiError wallet_ffi_register_public_account(WalletHandle*, const FfiBytes32*, FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_register_public_account");
-    return fillTransferResult("wallet_ffi_register_public_account", out_result);
-}
-
 WalletFfiError wallet_ffi_register_private_account(WalletHandle*, const FfiBytes32*, FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_register_private_account");
     return fillTransferResult("wallet_ffi_register_private_account", out_result);
@@ -435,15 +430,6 @@ WalletFfiError wallet_ffi_resolve_private_account(WalletHandle *handle, FfiBytes
     return fillPrivateAccountIdentity("wallet_ffi_resolve_private_account", out_account_identity);
 }
 
-void wallet_ffi_free_instruction_words(FfiInstructionWords *words){
-    LOGOS_CMOCK_RECORD("wallet_ffi_free_instruction_words");
-    if (words && words->instruction_words) {
-        free(words->instruction_words);
-        words->instruction_words = nullptr;
-        words->instruction_words_size = 0;
-    }
-}
-
 void wallet_ffi_free_account_identity(FfiAccountIdentity *account_identity){
     LOGOS_CMOCK_RECORD("wallet_ffi_free_account_identity");
     if (account_identity && account_identity->viewing_public_key) {
@@ -471,14 +457,14 @@ void wallet_ffi_free_ffi_program(FfiProgram *ffi_program) {
 }
 
 WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle, const FfiAccountIdentity *account_identities,
-uintptr_t account_identities_size, const uint32_t *instruction_words, uintptr_t instruction_words_size,
+uintptr_t account_identities_size, const uint8_t *instruction_data, uintptr_t instruction_data_size,
 FfiProgramId program_id, FfiTransactionResult *out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_public_transaction");
     return fillTransactionResult("wallet_ffi_send_generic_public_transaction", out_result);
 }
 
 WalletFfiError wallet_ffi_send_generic_private_transaction(WalletHandle *handle, const FfiAccountIdentity *account_identities,
-uintptr_t account_identities_size, const uint32_t *instruction_words, uintptr_t instruction_words_size,
+uintptr_t account_identities_size, const uint8_t *instruction_data, uintptr_t instruction_data_size,
 const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResult *out_result){
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_private_transaction");
     return fillTransactionResult("wallet_ffi_send_generic_private_transaction", out_result);

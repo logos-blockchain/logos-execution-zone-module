@@ -10,7 +10,8 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?ref=87fca2a176d0c7502245e2f61ce3c1acd70f5b2f";
+    # FIXME: pinned to the fees FFI branch (erhant/fees-ffi-fixes); re-pin to a dev rev once #825 merges.
+    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?rev=b3283d38c367b40e7fe6ac6ce72ed485604a9e31";
   };
 
   outputs = inputs@{ logos-module-builder, ... }:

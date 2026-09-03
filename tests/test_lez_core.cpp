@@ -460,15 +460,6 @@ LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
     LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
 }
 
-LOGOS_TEST(register_public_account_invalid_hex_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.register_public_account("bad"));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_register_public_account"));
-}
-
 LOGOS_TEST(register_private_account_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;

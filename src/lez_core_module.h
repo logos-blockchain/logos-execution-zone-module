@@ -21,6 +21,13 @@ constexpr const char* LEZ_NO_WALLET_DIR = "-";
 // NOTE: the generator parses this header line-by-line and only recognises a
 // method when its declaration ends with ';' on a single line. Keep every
 // method declaration on ONE line — multi-line signatures are silently dropped.
+// 
+// This seems to be fixed upstream in logos-cpp-sdk #91; 
+// (tracked in https://github.com/logos-co/logos-cpp-sdk/issues/59)
+// but our current pinned SDK does not include it; so instead we keep everything
+// single-line and disable formatting for this region
+//
+// clang-format off
 class LEZCoreModule : public LogosModuleContext {
 public:
     LEZCoreModule();
@@ -66,13 +73,14 @@ public:
     std::string claim_pinata_private_owned_not_initialized(const std::string& pinata_account_id_hex, const std::string& winner_account_id_hex, const std::string& solution_le16_hex);
 
     // === Operations ===
+    // A fresh public account is claimed by its first funded transfer (`to` owned by
+    // this wallet); there is no separate registration under fees.
     std::string transfer_public(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
     std::string transfer_shielded(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex);
     std::string transfer_deshielded(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
     std::string transfer_private(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex);
     std::string transfer_shielded_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
     std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
-    std::string register_public_account(const std::string& account_id_hex);
     std::string register_private_account(const std::string& account_id_hex);
 
     std::vector<uint8_t> authenticated_transfer_elf();
@@ -84,9 +92,10 @@ public:
     // Qt/QtRO glue can serialize it across the module process boundary. Declaring
     // it as std::vector<uint32_t> makes the header->LIDL generator fall back to an
     // opaque `any` with no QDataStream operators, silently dropping every argument
-    // over QtRO. It carries the little-endian bytes of the RISC Zero u32 words.
+    // over QtRO. The bytes are the Borsh-serialized instruction, passed to the
+    // FFI untouched (`lee` expects preserialized instruction data).
     std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex);
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint32_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
     std::string send_program_deployment_transaction(const std::vector<uint8_t>& program_elf);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
@@ -111,5 +120,6 @@ public:
 private:
     WalletHandle* walletHandle = nullptr;
 };
+// clang-format on
 
 #endif // LEZ_CORE_MODULE_H
