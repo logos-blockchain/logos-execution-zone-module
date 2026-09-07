@@ -460,13 +460,28 @@ LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
     LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
 }
 
-LOGOS_TEST(register_private_account_success_json) {
+// ============================================================================
+// Program deployment (program_loader)
+// ============================================================================
+
+LOGOS_TEST(send_program_deployment_transaction_success_json) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
 
-    const nlohmann::json obj = parseObject(module.register_private_account(VALID_ID));
-    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_register_private_account"));
+    const std::vector<uint8_t> elf = {0x7f, 'E', 'L', 'F'};
+    const nlohmann::json obj =
+        parseObject(module.send_program_deployment_transaction(VALID_ID, {VALID_ID_2}, elf, true));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_program_loader_deploy"));
     LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+}
+
+LOGOS_TEST(send_program_deployment_transaction_invalid_segment_hex_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj = parseObject(module.send_program_deployment_transaction(VALID_ID, {"bad"}, {}, false));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_program_loader_deploy"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
 }
 
 // ============================================================================
@@ -502,164 +517,6 @@ LOGOS_TEST(bridge_withdraw_ffi_error_json) {
     const nlohmann::json obj = parseObject(module.bridge_withdraw(VALID_ID, VALID_ID_2, 100));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
     LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
-}
-
-// ============================================================================
-// Vault claiming
-// ============================================================================
-
-LOGOS_TEST(get_vault_balance_invalid_hex_returns_empty) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    LOGOS_ASSERT_TRUE(module.get_vault_balance("not-hex").empty());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_vault_balance"));
-}
-
-LOGOS_TEST(get_vault_balance_returns_decimal_string) {
-    auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("get_vault_balance_value").returns(42);
-    LEZCoreModule module;
-
-    const std::string balance = module.get_vault_balance(VALID_ID);
-    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_vault_balance"));
-    LOGOS_ASSERT_EQ(balance, std::string("42"));
-}
-
-LOGOS_TEST(get_vault_balance_ffi_error_returns_empty) {
-    auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_get_vault_balance").returns(static_cast<int>(INTERNAL_ERROR));
-    LEZCoreModule module;
-
-    LOGOS_ASSERT_TRUE(module.get_vault_balance(VALID_ID).empty());
-}
-
-LOGOS_TEST(vault_claim_success_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, VALID_U128));
-    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_vault_claim"));
-    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
-    LOGOS_ASSERT_EQ(obj["tx_hash"].get<std::string>(), std::string("0xmocktxhash"));
-    LOGOS_ASSERT_TRUE(obj["error"].get<std::string>().empty());
-}
-
-LOGOS_TEST(vault_claim_invalid_hex_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim("bad", VALID_U128));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_vault_claim"));
-}
-
-LOGOS_TEST(vault_claim_invalid_amount_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, "ff"));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_CONTAINS(obj["error"].get<std::string>(), std::string("amount"));
-}
-
-LOGOS_TEST(vault_claim_ffi_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_vault_claim").returns(static_cast<int>(INTERNAL_ERROR));
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim(VALID_ID, VALID_U128));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
-}
-
-LOGOS_TEST(vault_claim_private_success_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, VALID_U128));
-    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_vault_claim_private"));
-    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
-}
-
-LOGOS_TEST(vault_claim_private_invalid_hex_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim_private("bad", VALID_U128));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_vault_claim_private"));
-}
-
-LOGOS_TEST(vault_claim_private_invalid_amount_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, "ff"));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_CONTAINS(obj["error"].get<std::string>(), std::string("amount"));
-}
-
-LOGOS_TEST(vault_claim_private_ffi_error_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_vault_claim_private").returns(static_cast<int>(INTERNAL_ERROR));
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.vault_claim_private(VALID_ID, VALID_U128));
-    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
-    LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
-}
-
-// ============================================================================
-// Pinata claiming
-// ============================================================================
-
-LOGOS_TEST(claim_pinata_invalid_hex_returns_empty) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    LOGOS_ASSERT_TRUE(module.claim_pinata("bad", VALID_ID_2, VALID_U128).empty());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_claim_pinata"));
-}
-
-LOGOS_TEST(claim_pinata_invalid_solution_returns_empty) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    LOGOS_ASSERT_TRUE(module.claim_pinata(VALID_ID, VALID_ID_2, "ab").empty());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_claim_pinata"));
-}
-
-LOGOS_TEST(claim_pinata_success_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const nlohmann::json obj = parseObject(module.claim_pinata(VALID_ID, VALID_ID_2, VALID_U128));
-    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_claim_pinata"));
-    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
-}
-
-LOGOS_TEST(claim_pinata_already_initialized_invalid_siblings_returns_empty) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    // siblings json is not an array -> parse failure.
-    const std::string result = module.claim_pinata_private_owned_already_initialized(
-        VALID_ID, VALID_ID_2, VALID_U128, 0, "not-an-array");
-    LOGOS_ASSERT_TRUE(result.empty());
-    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_claim_pinata_private_owned_already_initialized"));
-}
-
-LOGOS_TEST(claim_pinata_already_initialized_success_json) {
-    auto t = LogosTestContext("logos_execution_zone");
-    LEZCoreModule module;
-
-    const std::string siblings = std::string("[\"") + std::string(64, 'a') + std::string("\",\"") + std::string(64, 'b') + std::string("\"]");
-    const nlohmann::json obj = parseObject(module.claim_pinata_private_owned_already_initialized(
-        VALID_ID, VALID_ID_2, VALID_U128, 1, siblings));
-    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_claim_pinata_private_owned_already_initialized"));
-    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
 }
 
 // ============================================================================

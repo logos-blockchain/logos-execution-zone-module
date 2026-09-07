@@ -319,27 +319,6 @@ WalletFfiError wallet_ffi_get_current_block_height(WalletHandle*, uint64_t* out_
     return static_cast<WalletFfiError>(err);
 }
 
-// === Pinata claiming ===
-
-WalletFfiError wallet_ffi_claim_pinata(
-    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_claim_pinata");
-    return fillTransferResult("wallet_ffi_claim_pinata", out_result);
-}
-
-WalletFfiError wallet_ffi_claim_pinata_private_owned_already_initialized(
-    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16],
-    uintptr_t, const uint8_t (*)[32], uintptr_t, FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_claim_pinata_private_owned_already_initialized");
-    return fillTransferResult("wallet_ffi_claim_pinata_private_owned_already_initialized", out_result);
-}
-
-WalletFfiError wallet_ffi_claim_pinata_private_owned_not_initialized(
-    WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_claim_pinata_private_owned_not_initialized");
-    return fillTransferResult("wallet_ffi_claim_pinata_private_owned_not_initialized", out_result);
-}
-
 // === Transfers / registration ===
 
 WalletFfiError wallet_ffi_transfer_public(
@@ -388,11 +367,6 @@ WalletFfiError wallet_ffi_transfer_private_owned(
     WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_private_owned");
     return fillTransferResult("wallet_ffi_transfer_private_owned", out_result);
-}
-
-WalletFfiError wallet_ffi_register_private_account(WalletHandle*, const FfiBytes32*, FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_register_private_account");
-    return fillTransferResult("wallet_ffi_register_private_account", out_result);
 }
 
 void wallet_ffi_free_transfer_result(FfiTransferResult* result) {
@@ -470,15 +444,15 @@ const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResul
     return fillTransactionResult("wallet_ffi_send_generic_private_transaction", out_result);
 }    
 
-WalletFfiError wallet_ffi_program_deployment(WalletHandle *handle, const uint8_t *elf_data, uintptr_t elf_size,
-FfiTransactionResult *out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_program_deployment");
-    return fillTransactionResult("wallet_ffi_program_deployment", out_result);
+WalletFfiError wallet_ffi_program_loader_deploy(WalletHandle*, const FfiBytes32*, const FfiBytes32*, uintptr_t,
+                                                const uint8_t*, uintptr_t, bool, FfiTransactionResult* out_result) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_program_loader_deploy");
+    return fillTransactionResult("wallet_ffi_program_loader_deploy", out_result);
 }
 
 WalletFfiError wallet_ffi_poll_transaction_status(WalletHandle *handle, FfiBytes32 tx_hash, bool *transaction_status) {
     LOGOS_CMOCK_RECORD("wallet_ffi_poll_transaction_status");
-    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_program_deployment");
+    const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_poll_transaction_status");
     *transaction_status = (err == 0);
     return static_cast<WalletFfiError>(err);
 }
@@ -489,33 +463,6 @@ WalletFfiError wallet_ffi_bridge_withdraw(
     WalletHandle*, const FfiBytes32*, uint64_t, const FfiBytes32*, FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_bridge_withdraw");
     return fillTransferResult("wallet_ffi_bridge_withdraw", out_result);
-}
-
-// === Vault claiming ===
-
-WalletFfiError wallet_ffi_get_vault_balance(WalletHandle*, const FfiBytes32*, uint8_t (*out_balance)[16]) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_get_vault_balance");
-    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_vault_balance");
-    if (err == 0 && out_balance) {
-        const uint64_t value = static_cast<uint64_t>(LOGOS_CMOCK_RETURN(int, "get_vault_balance_value"));
-        memset(*out_balance, 0, 16);
-        for (int i = 0; i < 8; ++i) {
-            (*out_balance)[i] = static_cast<uint8_t>((value >> (i * 8)) & 0xFF);
-        }
-    }
-    return static_cast<WalletFfiError>(err);
-}
-
-WalletFfiError wallet_ffi_vault_claim(
-    WalletHandle*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_vault_claim");
-    return fillTransferResult("wallet_ffi_vault_claim", out_result);
-}
-
-WalletFfiError wallet_ffi_vault_claim_private(
-    WalletHandle*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_vault_claim_private");
-    return fillTransferResult("wallet_ffi_vault_claim_private", out_result);
 }
 
 // === Configuration ===

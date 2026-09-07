@@ -489,117 +489,6 @@ int64_t LEZCoreModule::get_current_block_height() {
     return static_cast<int64_t>(block_height);
 }
 
-// === Pinata claiming ===
-
-std::string LEZCoreModule::claim_pinata(
-    const std::string& pinata_account_id_hex,
-    const std::string& winner_account_id_hex,
-    const std::string& solution_le16_hex
-) {
-    FfiBytes32 pinataId{}, winnerId{};
-    if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
-        fprintf(stderr, "claim_pinata: invalid account id hex\n");
-        return {};
-    }
-    uint8_t solution[16];
-    if (!hexToU128(solution_le16_hex, &solution)) {
-        fprintf(stderr, "claim_pinata: solution_le16_hex must be 32 hex characters (16 bytes)\n");
-        return {};
-    }
-    FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_claim_pinata(walletHandle, &pinataId, &winnerId, &solution, &result);
-    if (error != SUCCESS) {
-        fprintf(stderr, "claim_pinata: wallet FFI error %d\n", error);
-        return {};
-    }
-    std::string resultJson = transferResultToJson(&result, std::string());
-    wallet_ffi_free_transfer_result(&result);
-    return resultJson;
-}
-
-std::string LEZCoreModule::claim_pinata_private_owned_already_initialized(
-    const std::string& pinata_account_id_hex,
-    const std::string& winner_account_id_hex,
-    const std::string& solution_le16_hex,
-    int64_t winner_proof_index,
-    const std::string& winner_proof_siblings_json
-) {
-    FfiBytes32 pinataId{}, winnerId{};
-    if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
-        fprintf(stderr, "claim_pinata_private_owned_already_initialized: invalid account id hex\n");
-        return {};
-    }
-    uint8_t solution[16];
-    if (!hexToU128(solution_le16_hex, &solution)) {
-        fprintf(
-            stderr,
-            "claim_pinata_private_owned_already_initialized: solution_le16_hex must be 32 hex characters (16 bytes)\n"
-        );
-        return {};
-    }
-
-    std::vector<uint8_t> siblings_bytes;
-    uintptr_t siblings_len = 0;
-    if (!jsonArrayHexToSiblings32(winner_proof_siblings_json, siblings_bytes, siblings_len)) {
-        fprintf(stderr, "claim_pinata_private_owned_already_initialized: failed to parse winner_proof_siblings_json\n");
-        return {};
-    }
-
-    const uint8_t (*siblings_ptr)[32] = nullptr;
-    if (siblings_len > 0) {
-        siblings_ptr = reinterpret_cast<const uint8_t (*)[32]>(siblings_bytes.data());
-    }
-
-    FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_claim_pinata_private_owned_already_initialized(
-        walletHandle,
-        &pinataId,
-        &winnerId,
-        &solution,
-        static_cast<uintptr_t>(winner_proof_index),
-        siblings_ptr,
-        siblings_len,
-        &result
-    );
-    if (error != SUCCESS) {
-        fprintf(stderr, "claim_pinata_private_owned_already_initialized: wallet FFI error %d\n", error);
-        return {};
-    }
-    std::string resultJson = transferResultToJson(&result, std::string());
-    wallet_ffi_free_transfer_result(&result);
-    return resultJson;
-}
-
-std::string LEZCoreModule::claim_pinata_private_owned_not_initialized(
-    const std::string& pinata_account_id_hex,
-    const std::string& winner_account_id_hex,
-    const std::string& solution_le16_hex
-) {
-    FfiBytes32 pinataId{}, winnerId{};
-    if (!hexToBytes32(pinata_account_id_hex, &pinataId) || !hexToBytes32(winner_account_id_hex, &winnerId)) {
-        fprintf(stderr, "claim_pinata_private_owned_not_initialized: invalid account id hex\n");
-        return {};
-    }
-    uint8_t solution[16];
-    if (!hexToU128(solution_le16_hex, &solution)) {
-        fprintf(
-            stderr,
-            "claim_pinata_private_owned_not_initialized: solution_le16_hex must be 32 hex characters (16 bytes)\n"
-        );
-        return {};
-    }
-    FfiTransferResult result{};
-    const WalletFfiError error =
-        wallet_ffi_claim_pinata_private_owned_not_initialized(walletHandle, &pinataId, &winnerId, &solution, &result);
-    if (error != SUCCESS) {
-        fprintf(stderr, "claim_pinata_private_owned_not_initialized: wallet FFI error %d\n", error);
-        return {};
-    }
-    std::string resultJson = transferResultToJson(&result, std::string());
-    wallet_ffi_free_transfer_result(&result);
-    return resultJson;
-}
-
 // === Operations ===
 
 std::string LEZCoreModule::transfer_public(
@@ -836,94 +725,6 @@ std::string LEZCoreModule::bridge_withdraw(
     return resultJson;
 }
 
-// === Vault claiming ===
-
-std::string LEZCoreModule::get_vault_balance(const std::string& owner_account_id_hex) {
-    FfiBytes32 ownerId{};
-    if (!hexToBytes32(owner_account_id_hex, &ownerId)) {
-        fprintf(stderr, "get_vault_balance: invalid owner_account_id_hex\n");
-        return {};
-    }
-
-    uint8_t balance[16] = {0};
-    const WalletFfiError error = wallet_ffi_get_vault_balance(walletHandle, &ownerId, &balance);
-    if (error != SUCCESS) {
-        fprintf(stderr, "get_vault_balance: wallet FFI error %d\n", error);
-        return {};
-    }
-    return balanceLe16ToDecimalString(balance);
-}
-
-std::string LEZCoreModule::vault_claim(const std::string& owner_account_id_hex, const std::string& amount_le16_hex) {
-    FfiBytes32 ownerId{};
-    if (!hexToBytes32(owner_account_id_hex, &ownerId)) {
-        fprintf(stderr, "vault_claim: invalid owner_account_id_hex\n");
-        return transferResultToJson(nullptr, "vault_claim: invalid owner_account_id_hex");
-    }
-
-    uint8_t amount[16];
-    if (!hexToU128(amount_le16_hex, &amount)) {
-        fprintf(stderr, "vault_claim: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        return transferResultToJson(nullptr, "vault_claim: amount_le16_hex must be 32 hex characters (16 bytes)");
-    }
-
-    FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_vault_claim(walletHandle, &ownerId, &amount, &result);
-    if (error != SUCCESS) {
-        fprintf(stderr, "vault_claim: wallet FFI error %d\n", error);
-        return transferResultToJson(nullptr, "vault_claim: wallet FFI error " + std::to_string(error));
-    }
-    std::string resultJson = transferResultToJson(&result, std::string());
-    wallet_ffi_free_transfer_result(&result);
-    return resultJson;
-}
-
-std::string LEZCoreModule::vault_claim_private(
-    const std::string& owner_account_id_hex,
-    const std::string& amount_le16_hex
-) {
-    FfiBytes32 ownerId{};
-    if (!hexToBytes32(owner_account_id_hex, &ownerId)) {
-        fprintf(stderr, "vault_claim_private: invalid owner_account_id_hex\n");
-        return transferResultToJson(nullptr, "vault_claim_private: invalid owner_account_id_hex");
-    }
-
-    uint8_t amount[16];
-    if (!hexToU128(amount_le16_hex, &amount)) {
-        fprintf(stderr, "vault_claim_private: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        return transferResultToJson(
-            nullptr, "vault_claim_private: amount_le16_hex must be 32 hex characters (16 bytes)"
-        );
-    }
-
-    FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_vault_claim_private(walletHandle, &ownerId, &amount, &result);
-    if (error != SUCCESS) {
-        fprintf(stderr, "vault_claim_private: wallet FFI error %d\n", error);
-        return transferResultToJson(nullptr, "vault_claim_private: wallet FFI error " + std::to_string(error));
-    }
-    std::string resultJson = transferResultToJson(&result, std::string());
-    wallet_ffi_free_transfer_result(&result);
-    return resultJson;
-}
-
-std::string LEZCoreModule::register_private_account(const std::string& account_id_hex) {
-    FfiBytes32 id{};
-    if (!hexToBytes32(account_id_hex, &id)) {
-        fprintf(stderr, "register_private_account: invalid account_id_hex\n");
-        return transferResultToJson(nullptr, "register_private_account: invalid account_id_hex");
-    }
-    FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_register_private_account(walletHandle, &id, &result);
-    if (error != SUCCESS) {
-        fprintf(stderr, "register_private_account: wallet FFI error %d\n", error);
-        return transferResultToJson(nullptr, "register_private_account: wallet FFI error " + std::to_string(error));
-    }
-    std::string resultJson = transferResultToJson(&result, std::string());
-    wallet_ffi_free_transfer_result(&result);
-    return resultJson;
-}
-
 std::vector<uint8_t> LEZCoreModule::token_elf() {
     FfiProgram ffi_program{};
     WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
@@ -1146,14 +947,27 @@ std::string LEZCoreModule::send_generic_private_transaction(
     return resultJson;
 }
 
-std::string LEZCoreModule::send_program_deployment_transaction(const std::vector<uint8_t>& program_elf) {
+// clang-format off
+std::string LEZCoreModule::send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable) {
+// clang-format on
+    FfiBytes32 header{};
+    if (!hexToBytes32(header_account_id_hex, &header)) {
+        fprintf(stderr, "send_program_deployment_transaction: invalid header_account_id_hex\n");
+        return transferResultToJson(nullptr, "send_program_deployment_transaction: invalid header_account_id_hex");
+    }
+    std::vector<FfiBytes32> segments(segment_account_ids_hex.size());
+    for (size_t i = 0; i < segment_account_ids_hex.size(); ++i) {
+        if (!hexToBytes32(segment_account_ids_hex[i], &segments[i])) {
+            fprintf(stderr, "send_program_deployment_transaction: invalid segment_account_ids_hex[%zu]\n", i);
+            return transferResultToJson(nullptr, "send_program_deployment_transaction: invalid segment_account_ids_hex");
+        }
+    }
+
     FfiTransactionResult result{};
-
-    const uint8_t* program_elf_data = program_elf.data();
-    uintptr_t program_elf_size = static_cast<uintptr_t>(program_elf.size());
-
-    const WalletFfiError error =
-        wallet_ffi_program_deployment(walletHandle, program_elf_data, program_elf_size, &result);
+    const WalletFfiError error = wallet_ffi_program_loader_deploy(
+        walletHandle, &header, segments.data(), static_cast<uintptr_t>(segments.size()), program_elf.data(),
+        static_cast<uintptr_t>(program_elf.size()), immutable, &result
+    );
 
     if (error != SUCCESS) {
         fprintf(stderr, "send_program_deployment_transaction: wallet FFI error %d\n", error);

@@ -6,7 +6,7 @@ intro: |
   `logos-execution-zone` is a Logos `core` module that wraps the
   [Logos execution-zone wallet library](https://github.com/logos-blockchain/lssa)
   (`wallet_ffi`) to provide wallet lifecycle, account management, balance and
-  block queries, transfers, pinata claiming, and account-id encoding. This
+  block queries, transfers, and account-id encoding. This
   doc-test exercises **this** execution-zone-module commit end-to-end through the
   headless `logoscore` runtime:
 
@@ -28,7 +28,7 @@ intro: |
   (`account_id_to_base58` / `account_id_from_base58`) — are the module's
   deterministic, **offline** surface: they need neither an open wallet nor a live
   sequencer, so a green run is reproducible in CI. The stateful operations
-  (creating accounts, transfers, sync, pinata claims) require a running
+  (creating accounts, transfers, sync) require a running
   sequencer and network, and are covered by the module's unit tests (mocked
   `wallet_ffi`) and integration tests (real `wallet_ffi`) instead.
 
