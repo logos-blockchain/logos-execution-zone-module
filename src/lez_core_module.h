@@ -21,8 +21,8 @@ constexpr const char* LEZ_NO_WALLET_DIR = "-";
 // NOTE: the generator parses this header line-by-line and only recognises a
 // method when its declaration ends with ';' on a single line. Keep every
 // method declaration on ONE line — multi-line signatures are silently dropped.
-// 
-// This seems to be fixed upstream in logos-cpp-sdk #91; 
+//
+// This seems to be fixed upstream in logos-cpp-sdk #91;
 // (tracked in https://github.com/logos-co/logos-cpp-sdk/issues/59)
 // but our current pinned SDK does not include it; so instead we keep everything
 // single-line and disable formatting for this region
@@ -93,6 +93,9 @@ public:
     // Deploys `program_elf` via `program_loader`: one write-once segment account per
     // 96 KiB chunk of the ELF (in chain order), plus a header account pointing at the
     // chain. The wallet must hold the signing keys for every account passed in.
+    //
+    // NOTE: the FFI passes no fee payer, so under fees this fails with PayerCannotFund
+    // (all deploy accounts are fresh). Tracked in logos-execution-zone#839.
     std::string send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
