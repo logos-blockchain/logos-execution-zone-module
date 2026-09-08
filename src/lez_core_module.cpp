@@ -961,7 +961,7 @@ std::string LEZCoreModule::send_generic_private_transaction(
 
 // clang-format off
 std::string LEZCoreModule::send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex) {
-// clang-format on
+    // clang-format on
     FfiBytes32 header{};
     if (!hexToBytes32(header_account_id_hex, &header)) {
         fprintf(stderr, "send_program_deployment_transaction: invalid header_account_id_hex\n");
@@ -980,14 +980,23 @@ std::string LEZCoreModule::send_program_deployment_transaction(const std::string
     for (size_t i = 0; i < segment_account_ids_hex.size(); ++i) {
         if (!hexToBytes32(segment_account_ids_hex[i], &segments[i])) {
             fprintf(stderr, "send_program_deployment_transaction: invalid segment_account_ids_hex[%zu]\n", i);
-            return transferResultToJson(nullptr, "send_program_deployment_transaction: invalid segment_account_ids_hex");
+            return transferResultToJson(
+                nullptr, "send_program_deployment_transaction: invalid segment_account_ids_hex"
+            );
         }
     }
 
     FfiTransactionResult result{};
     const WalletFfiError error = wallet_ffi_program_loader_deploy(
-        walletHandle, &header, segments.data(), static_cast<uintptr_t>(segments.size()), program_elf.data(),
-        static_cast<uintptr_t>(program_elf.size()), immutable, payer_ptr, &result
+        walletHandle,
+        &header,
+        segments.data(),
+        static_cast<uintptr_t>(segments.size()),
+        program_elf.data(),
+        static_cast<uintptr_t>(program_elf.size()),
+        immutable,
+        payer_ptr,
+        &result
     );
 
     if (error != SUCCESS) {
