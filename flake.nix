@@ -10,7 +10,8 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?ref=v0.2.5-rc1";
+    # TODO: repoint to the release tag once logos-execution-zone#841 ships.
+    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?rev=e1b594c520d3b97d819fd7d070d67aebf26cbd50";
   };
 
   outputs = inputs@{ logos-module-builder, ... }:

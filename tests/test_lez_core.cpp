@@ -470,16 +470,26 @@ LOGOS_TEST(send_program_deployment_transaction_success_json) {
 
     const std::vector<uint8_t> elf = {0x7f, 'E', 'L', 'F'};
     const nlohmann::json obj =
-        parseObject(module.send_program_deployment_transaction(VALID_ID, {VALID_ID_2}, elf, true));
+        parseObject(module.send_program_deployment_transaction(VALID_ID, {VALID_ID_2}, elf, true, VALID_ID));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_program_loader_deploy"));
     LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+}
+
+LOGOS_TEST(send_program_deployment_transaction_invalid_payer_hex_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj =
+        parseObject(module.send_program_deployment_transaction(VALID_ID, {VALID_ID_2}, {}, false, "bad"));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_program_loader_deploy"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
 }
 
 LOGOS_TEST(send_program_deployment_transaction_invalid_segment_hex_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
 
-    const nlohmann::json obj = parseObject(module.send_program_deployment_transaction(VALID_ID, {"bad"}, {}, false));
+    const nlohmann::json obj = parseObject(module.send_program_deployment_transaction(VALID_ID, {"bad"}, {}, false, ""));
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_program_loader_deploy"));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
 }

@@ -260,6 +260,7 @@ WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle,
                                                                const uint8_t *instruction_data,
                                                                uintptr_t instruction_data_size,
                                                                FfiProgramId program_id,
+                                                               const FfiBytes32 *payer,
                                                                FfiTransactionResult *out_result);
 
 WalletFfiError wallet_ffi_send_generic_private_transaction(WalletHandle *handle,
@@ -277,6 +278,7 @@ WalletFfiError wallet_ffi_program_loader_deploy(WalletHandle *handle,
                                                 const uint8_t *elf_data,
                                                 uintptr_t elf_size,
                                                 bool immutable,
+                                                const FfiBytes32 *payer,
                                                 FfiTransactionResult *out_result);
 
 WalletFfiError wallet_ffi_poll_transaction_status(WalletHandle *handle,

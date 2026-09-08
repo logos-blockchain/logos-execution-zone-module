@@ -88,15 +88,20 @@ public:
     // opaque `any` with no QDataStream operators, silently dropping every argument
     // over QtRO. The bytes are the Borsh-serialized instruction, passed to the
     // FFI untouched (`lee` expects preserialized instruction data).
-    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex);
+    //
+    // `payer_account_id_hex` names the fee payer: one of the signing accounts, or any
+    // other public account whose key the wallet holds (it co-signs). Empty = self-pay
+    // from the first funded signing account.
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex, const std::string& payer_account_id_hex);
     std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
     // Deploys `program_elf` via `program_loader`: one write-once segment account per
     // 96 KiB chunk of the ELF (in chain order), plus a header account pointing at the
     // chain. The wallet must hold the signing keys for every account passed in.
     //
-    // NOTE: the FFI passes no fee payer, so under fees this fails with PayerCannotFund
-    // (all deploy accounts are fresh). Tracked in logos-execution-zone#839.
-    std::string send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable);
+    // Every deploy account is fresh and unfunded, so `payer_account_id_hex` must name a
+    // funded public account whose key the wallet holds; it co-signs the fee. Empty
+    // falls back to self-pay, which the sequencer rejects with PayerCannotFund.
+    std::string send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
 

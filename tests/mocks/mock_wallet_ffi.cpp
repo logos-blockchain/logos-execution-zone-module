@@ -432,7 +432,7 @@ void wallet_ffi_free_ffi_program(FfiProgram *ffi_program) {
 
 WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle, const FfiAccountIdentity *account_identities,
 uintptr_t account_identities_size, const uint8_t *instruction_data, uintptr_t instruction_data_size,
-FfiProgramId program_id, FfiTransactionResult *out_result) {
+FfiProgramId program_id, const FfiBytes32 *payer, FfiTransactionResult *out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_public_transaction");
     return fillTransactionResult("wallet_ffi_send_generic_public_transaction", out_result);
 }
@@ -445,7 +445,8 @@ const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResul
 }    
 
 WalletFfiError wallet_ffi_program_loader_deploy(WalletHandle*, const FfiBytes32*, const FfiBytes32*, uintptr_t,
-                                                const uint8_t*, uintptr_t, bool, FfiTransactionResult* out_result) {
+                                                const uint8_t*, uintptr_t, bool, const FfiBytes32*,
+                                                FfiTransactionResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_program_loader_deploy");
     return fillTransactionResult("wallet_ffi_program_loader_deploy", out_result);
 }

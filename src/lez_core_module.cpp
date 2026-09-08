@@ -785,8 +785,19 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const std::vector<std::string>& account_ids,
     const std::vector<bool>& signing_requirements,
     const std::vector<uint8_t>& instruction,
-    const std::string& program_id_hex
+    const std::string& program_id_hex,
+    const std::string& payer_account_id_hex
 ) {
+    FfiBytes32 payer{};
+    const FfiBytes32* payer_ptr = nullptr;
+    if (!payer_account_id_hex.empty()) {
+        if (!hexToBytes32(payer_account_id_hex, &payer)) {
+            fprintf(stderr, "send_generic_public_transaction: invalid payer_account_id_hex\n");
+            return transferResultToJson(nullptr, "send_generic_public_transaction: invalid payer_account_id_hex");
+        }
+        payer_ptr = &payer;
+    }
+
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
 
@@ -834,6 +845,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
         input_instruction_data,
         input_instruction_data_size,
         program_id,
+        payer_ptr,
         &result
     );
 
@@ -948,12 +960,21 @@ std::string LEZCoreModule::send_generic_private_transaction(
 }
 
 // clang-format off
-std::string LEZCoreModule::send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable) {
+std::string LEZCoreModule::send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex) {
 // clang-format on
     FfiBytes32 header{};
     if (!hexToBytes32(header_account_id_hex, &header)) {
         fprintf(stderr, "send_program_deployment_transaction: invalid header_account_id_hex\n");
         return transferResultToJson(nullptr, "send_program_deployment_transaction: invalid header_account_id_hex");
+    }
+    FfiBytes32 payer{};
+    const FfiBytes32* payer_ptr = nullptr;
+    if (!payer_account_id_hex.empty()) {
+        if (!hexToBytes32(payer_account_id_hex, &payer)) {
+            fprintf(stderr, "send_program_deployment_transaction: invalid payer_account_id_hex\n");
+            return transferResultToJson(nullptr, "send_program_deployment_transaction: invalid payer_account_id_hex");
+        }
+        payer_ptr = &payer;
     }
     std::vector<FfiBytes32> segments(segment_account_ids_hex.size());
     for (size_t i = 0; i < segment_account_ids_hex.size(); ++i) {
@@ -966,7 +987,7 @@ std::string LEZCoreModule::send_program_deployment_transaction(const std::string
     FfiTransactionResult result{};
     const WalletFfiError error = wallet_ffi_program_loader_deploy(
         walletHandle, &header, segments.data(), static_cast<uintptr_t>(segments.size()), program_elf.data(),
-        static_cast<uintptr_t>(program_elf.size()), immutable, &result
+        static_cast<uintptr_t>(program_elf.size()), immutable, payer_ptr, &result
     );
 
     if (error != SUCCESS) {
