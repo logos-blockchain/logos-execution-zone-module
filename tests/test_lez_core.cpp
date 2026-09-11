@@ -33,6 +33,24 @@ LOGOS_TEST(name_and_version) {
 }
 
 // ============================================================================
+// Wallet location
+// ============================================================================
+
+// Constructed directly, so no host has stamped a persistence path onto it. It
+// must say so rather than invent one: a caller that receives a plausible-looking
+// path here would write a wallet somewhere the host does not manage and will
+// never clean up.
+// Never "" -- that answer is reserved for a call that never arrived, so a caller
+// can tell "no directory here" from "I could not reach you" and retry instead of
+// writing a wallet somewhere it invented.
+LOGOS_TEST(wallet_dir_reports_no_directory_without_a_provisioning_host) {
+    LEZCoreModule module;
+    LOGOS_ASSERT(!module.isContextReady());
+    LOGOS_ASSERT_EQ(module.wallet_dir(), std::string(LEZ_NO_WALLET_DIR));
+    LOGOS_ASSERT(!module.wallet_dir().empty());
+}
+
+// ============================================================================
 // Account management
 // ============================================================================
 
