@@ -1,7 +1,7 @@
 {
   "name": "lez_core",
   "display_name": "LEZ Core Module",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Logos Execution Zone Core Module for Logos Core",
   "author": "Logos Blockchain Team",
   "type": "core",
