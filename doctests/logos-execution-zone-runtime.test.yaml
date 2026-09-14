@@ -189,9 +189,24 @@ sections:
           `loaded`:
         run: "./logos/bin/logoscore status"
         code_block: "logoscore status"
+        # Match lez_core's own entry, not a bare '"status":"loaded"' — the
+        # always-loaded capability_module satisfies that substring on its own,
+        # so a lez_core that loaded and then crashed would still pass here and
+        # the failure would only surface several steps later, at the first
+        # `call`, with no hint of why.
+        expect_contains:
+          - '"name":"lez_core","status":"loaded"'
+
+      - title: "Check the daemon log after loading"
+        text: |
+          The daemon logs each module it loads. If `lez_core`'s plugin fails to
+          `dlopen` — a missing shared-library dependency is the usual cause —
+          the daemon records the crash here, and `status` above flips the
+          module back to `not_loaded`.
+        run: "cat logs.txt"
+        code_block: "cat logs.txt"
         expect_contains:
           - "lez_core"
-          - '"status":"loaded"'
 
       - title: "Introspect the module with module-info"
         text: |
