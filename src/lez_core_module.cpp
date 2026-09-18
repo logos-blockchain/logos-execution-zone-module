@@ -828,13 +828,11 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const uint8_t* input_instruction_data = instruction.data();
     uintptr_t input_instruction_data_size = static_cast<uintptr_t>(instruction.size());
 
-    std::vector<uint8_t> program_id_bytes;
-    if (!hexToBytes(program_id_hex, program_id_bytes, 32)) {
+    FfiBytes32 program_account_id{};
+    if (!hexToBytes32(program_id_hex, &program_account_id)) {
         fprintf(stderr, "send_generic_public_transaction: invalid program_id_hex");
         return transferResultToJson(nullptr, std::string("send_generic_public_transaction: invalid program_id_hex"));
     }
-    FfiProgramId program_id{};
-    memcpy(program_id.data, program_id_bytes.data(), 32);
 
     FfiTransactionResult result{};
 
@@ -844,7 +842,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
         account_identities_size,
         input_instruction_data,
         input_instruction_data_size,
-        program_id,
+        program_account_id,
         payer_ptr,
         &result
     );
