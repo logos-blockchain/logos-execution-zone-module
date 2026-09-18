@@ -22,6 +22,14 @@
         wallet_ffi = {
           input = inputs.logos-execution-zone;
           packages.default = "wallet";
+          # Nix does not run on Windows, so logos-execution-zone publishes its
+          # MinGW cross build under the builder's own package set. Without this
+          # the builder would look for `packages.x86_64-windows.wallet`, which
+          # cannot exist.
+          systems.x86_64-windows = {
+            system = "x86_64-linux";
+            packages.default = "wallet-windows-x86_64";
+          };
         };
       };
       tests = {

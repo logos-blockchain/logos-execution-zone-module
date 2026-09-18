@@ -44,7 +44,7 @@ public:
     int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& statistics_path);
     int64_t save();
 
-    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint32_t depth);
+    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth);
 
     // === Account Management ===
     std::string create_account_public();
