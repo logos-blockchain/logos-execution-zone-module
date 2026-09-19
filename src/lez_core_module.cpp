@@ -908,7 +908,7 @@ std::string LEZCoreModule::send_generic_private_transaction(
     main_program.elf_data = program_elf_data;
     main_program.elf_size = program_elf_size;
 
-    std::vector<FfiProgram> ffi_program_dependencies;
+    std::vector<FfiDependency> ffi_program_dependencies;
     ffi_program_dependencies.reserve(program_dependencies.size());
 
     for (int i = 0; i < program_dependencies.size(); ++i) {
@@ -920,15 +920,20 @@ std::string LEZCoreModule::send_generic_private_transaction(
         program.elf_data = program_elf_data;
         program.elf_size = program_elf_size;
 
-        ffi_program_dependencies.push_back(program);
+        FfiDependency dependency{};
+        dependency.program = program;
+        dependency.kind = FfiProgramKind::PROGRAM_PUBLIC;
+
+        ffi_program_dependencies.push_back(dependency);
     }
 
-    const FfiProgram* dependencies_data = ffi_program_dependencies.data();
+    const FfiDependency* dependencies_data = ffi_program_dependencies.data();
     uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
 
     FfiProgramWithDependencies program_with_dependencies{};
 
     program_with_dependencies.program = main_program;
+    program_with_dependencies.self_kind = FfiProgramKind::PROGRAM_PUBLIC;
     program_with_dependencies.deps = dependencies_data;
     program_with_dependencies.deps_size = dependencies_size;
 
