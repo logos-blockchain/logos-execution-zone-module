@@ -58,6 +58,17 @@ namespace {
         constexpr auto AccountId = "account_id";
         constexpr auto IsPublic = "is_public";
         constexpr auto Secrets = "secrets";
+        constexpr auto Kind = "kind";
+        constexpr auto KindPublic = "public";
+        constexpr auto KindShadow = "shadow";
+        constexpr auto KindPrivate = "private";
+        constexpr auto ProgramHeader = "program_header";
+        constexpr auto ImageIdHex = "image_id_hex";
+        constexpr auto ProgramFirstSegmentHex = "program_first_segment_hex";
+        constexpr auto Immutable = "immutable";
+        constexpr auto MembershipProof = "membership_proof";
+        constexpr auto Index = "index";
+        constexpr auto Path = "path";
     } // namespace JsonKeys
 
     bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength = -1) {
@@ -276,6 +287,75 @@ namespace {
                 return false;
             out_bytes.insert(out_bytes.end(), bytes.begin(), bytes.end());
         }
+        return true;
+    }
+
+    // FfiMembershipProof.path points into proof_path_bytes, which must outlive it.
+    struct ParsedProgramKind {
+        FfiProgramKind kind{};
+        FfiProgramHeader program_header{};
+        std::vector<uint8_t> proof_path_bytes;
+        FfiMembershipProof membership_proof{};
+    };
+
+    bool jsonToProgramKind(const std::string& json, ParsedProgramKind* out) {
+        nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
+        if (doc.is_discarded() || !doc.is_object())
+            return false;
+        if (!doc.contains(JsonKeys::Kind) || !doc[JsonKeys::Kind].is_string())
+            return false;
+
+        const std::string kindStr = doc[JsonKeys::Kind].get<std::string>();
+        if (kindStr == JsonKeys::KindPublic) {
+            out->kind = FfiProgramKind::PROGRAM_PUBLIC;
+            return true;
+        }
+        if (kindStr == JsonKeys::KindShadow) {
+            out->kind = FfiProgramKind::PROGRAM_SHADOW;
+            return true;
+        }
+        if (kindStr != JsonKeys::KindPrivate)
+            return false;
+        out->kind = FfiProgramKind::PROGRAM_PRIVATE;
+
+        if (!doc.contains(JsonKeys::ProgramHeader) || !doc[JsonKeys::ProgramHeader].is_object())
+            return false;
+        const auto& header = doc[JsonKeys::ProgramHeader];
+
+        if (!header.contains(JsonKeys::ImageIdHex) || !header[JsonKeys::ImageIdHex].is_string())
+            return false;
+        FfiBytes32 imageIdBytes{};
+        if (!hexToBytes32(header[JsonKeys::ImageIdHex].get<std::string>(), &imageIdBytes))
+            return false;
+        memcpy(out->program_header.image_id.data, imageIdBytes.data, 32);
+
+        if (!header.contains(JsonKeys::ProgramFirstSegmentHex) || !header[JsonKeys::ProgramFirstSegmentHex].is_string())
+            return false;
+        if (!hexToBytes32(
+                header[JsonKeys::ProgramFirstSegmentHex].get<std::string>(), &out->program_header.program_first_segment
+            ))
+            return false;
+
+        if (!header.contains(JsonKeys::Immutable) || !header[JsonKeys::Immutable].is_boolean())
+            return false;
+        out->program_header.immutable = header[JsonKeys::Immutable].get<bool>();
+
+        if (!doc.contains(JsonKeys::MembershipProof) || !doc[JsonKeys::MembershipProof].is_object())
+            return false;
+        const auto& proof = doc[JsonKeys::MembershipProof];
+
+        if (!proof.contains(JsonKeys::Index) || !proof[JsonKeys::Index].is_number_unsigned())
+            return false;
+        out->membership_proof.index = proof[JsonKeys::Index].get<uintptr_t>();
+
+        if (!proof.contains(JsonKeys::Path) || !proof[JsonKeys::Path].is_array())
+            return false;
+        uintptr_t path_len = 0;
+        if (!jsonArrayHexToSiblings32(proof[JsonKeys::Path].dump(), out->proof_path_bytes, path_len))
+            return false;
+        out->membership_proof.path = reinterpret_cast<const FfiBytes32*>(out->proof_path_bytes.data());
+        out->membership_proof.path_len = path_len;
+
         return true;
     }
 
@@ -868,8 +948,23 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const std::vector<std::string>& account_ids,
     const std::vector<uint8_t>& instruction,
     const std::vector<uint8_t>& program_elf,
-    const std::vector<std::vector<uint8_t>>& program_dependencies
+    const std::vector<std::vector<uint8_t>>& program_dependencies,
+    const std::string& self_kind_json,
+    const std::vector<std::string>& dependency_kinds_json
 ) {
+    if (dependency_kinds_json.size() != program_dependencies.size()) {
+        fprintf(stderr, "send_generic_private_transaction: dependency_kinds_json size must match program_dependencies\n");
+        return transferResultToJson(
+            nullptr, std::string("send_generic_private_transaction: dependency_kinds_json size must match program_dependencies")
+        );
+    }
+
+    ParsedProgramKind self_parsed{};
+    if (!jsonToProgramKind(self_kind_json, &self_parsed)) {
+        fprintf(stderr, "send_generic_private_transaction: invalid self_kind_json\n");
+        return transferResultToJson(nullptr, std::string("send_generic_private_transaction: invalid self_kind_json"));
+    }
+
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
 
@@ -910,6 +1005,10 @@ std::string LEZCoreModule::send_generic_private_transaction(
 
     std::vector<FfiDependency> ffi_program_dependencies;
     ffi_program_dependencies.reserve(program_dependencies.size());
+    // Reserved upfront so pushed elements never move: each FfiDependency.membership_proof.path
+    // points into the matching entry's proof_path_bytes.
+    std::vector<ParsedProgramKind> dependency_kinds_parsed;
+    dependency_kinds_parsed.reserve(program_dependencies.size());
 
     for (int i = 0; i < program_dependencies.size(); ++i) {
         FfiProgram program{};
@@ -920,9 +1019,22 @@ std::string LEZCoreModule::send_generic_private_transaction(
         program.elf_data = program_elf_data;
         program.elf_size = program_elf_size;
 
+        dependency_kinds_parsed.emplace_back();
+        if (!jsonToProgramKind(dependency_kinds_json[i], &dependency_kinds_parsed.back())) {
+            fprintf(stderr, "send_generic_private_transaction: invalid dependency_kinds_json[%d]\n", i);
+            return transferResultToJson(
+                nullptr,
+                std::string("send_generic_private_transaction: invalid dependency_kinds_json[") + std::to_string(i)
+                    + "]"
+            );
+        }
+        const ParsedProgramKind& parsed = dependency_kinds_parsed.back();
+
         FfiDependency dependency{};
         dependency.program = program;
-        dependency.kind = FfiProgramKind::PROGRAM_PUBLIC;
+        dependency.kind = parsed.kind;
+        dependency.program_header = parsed.program_header;
+        dependency.membership_proof = parsed.membership_proof;
 
         ffi_program_dependencies.push_back(dependency);
     }
@@ -933,7 +1045,9 @@ std::string LEZCoreModule::send_generic_private_transaction(
     FfiProgramWithDependencies program_with_dependencies{};
 
     program_with_dependencies.program = main_program;
-    program_with_dependencies.self_kind = FfiProgramKind::PROGRAM_PUBLIC;
+    program_with_dependencies.self_kind = self_parsed.kind;
+    program_with_dependencies.self_program_header = self_parsed.program_header;
+    program_with_dependencies.self_membership_proof = self_parsed.membership_proof;
     program_with_dependencies.deps = dependencies_data;
     program_with_dependencies.deps_size = dependencies_size;
 
