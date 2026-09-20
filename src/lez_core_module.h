@@ -93,7 +93,9 @@ public:
     // other public account whose key the wallet holds (it co-signs). Empty = self-pay
     // from the first funded signing account.
     std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex, const std::string& payer_account_id_hex);
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    // `self_account_id_hex` is `program_elf`'s deployed address. `program_dependencies` and
+    // `program_dependency_account_ids_hex` are parallel arrays.
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::string& self_account_id_hex, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& program_dependency_account_ids_hex);
     // Deploys `program_elf` via `program_loader`: one write-once segment account per
     // 96 KiB chunk of the ELF (in chain order), plus a header account pointing at the
     // chain. The wallet must hold the signing keys for every account passed in.

@@ -866,7 +866,9 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const std::vector<std::string>& account_ids,
     const std::vector<uint8_t>& instruction,
     const std::vector<uint8_t>& program_elf,
-    const std::vector<std::vector<uint8_t>>& program_dependencies
+    const std::string& self_account_id_hex,
+    const std::vector<std::vector<uint8_t>>& program_dependencies,
+    const std::vector<std::string>& program_dependency_account_ids_hex
 ) {
     std::vector<FfiAccountIdentity> identities_resolved;
     identities_resolved.reserve(account_ids.size());
@@ -906,27 +908,38 @@ std::string LEZCoreModule::send_generic_private_transaction(
     main_program.elf_data = program_elf_data;
     main_program.elf_size = program_elf_size;
 
-    std::vector<FfiProgram> ffi_program_dependencies;
+    std::vector<FfiProgramDependency> ffi_program_dependencies;
     ffi_program_dependencies.reserve(program_dependencies.size());
 
     for (int i = 0; i < program_dependencies.size(); ++i) {
-        FfiProgram program{};
+        FfiProgramDependency dependency{};
 
-        const uint8_t* program_elf_data = program_dependencies[i].data();
-        uintptr_t program_elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
+        dependency.program.elf_data = program_dependencies[i].data();
+        dependency.program.elf_size = static_cast<uintptr_t>(program_dependencies[i].size());
 
-        program.elf_data = program_elf_data;
-        program.elf_size = program_elf_size;
+        if (!hexToBytes32(program_dependency_account_ids_hex[i], &dependency.account_id)) {
+            fprintf(stderr, "send_generic_private_transaction: invalid program_dependency_account_ids_hex\n");
+            return transferResultToJson(
+                nullptr, std::string("send_generic_private_transaction: invalid program_dependency_account_ids_hex")
+            );
+        }
 
-        ffi_program_dependencies.push_back(program);
+        ffi_program_dependencies.push_back(dependency);
     }
 
-    const FfiProgram* dependencies_data = ffi_program_dependencies.data();
+    const FfiProgramDependency* dependencies_data = ffi_program_dependencies.data();
     uintptr_t dependencies_size = static_cast<uintptr_t>(ffi_program_dependencies.size());
+
+    FfiBytes32 self_account_id{};
+    if (!hexToBytes32(self_account_id_hex, &self_account_id)) {
+        fprintf(stderr, "send_generic_private_transaction: invalid self_account_id_hex\n");
+        return transferResultToJson(nullptr, std::string("send_generic_private_transaction: invalid self_account_id_hex"));
+    }
 
     FfiProgramWithDependencies program_with_dependencies{};
 
     program_with_dependencies.program = main_program;
+    program_with_dependencies.self_account_id = self_account_id;
     program_with_dependencies.deps = dependencies_data;
     program_with_dependencies.deps_size = dependencies_size;
 

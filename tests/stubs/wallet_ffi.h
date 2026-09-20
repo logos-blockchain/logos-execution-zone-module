@@ -122,11 +122,22 @@ typedef struct FfiProgram {
 } FfiProgram;
 
 /**
+ * A program paired with the account id it's deployed at.
+ *
+ * Intended to be created manually.
+ */
+typedef struct FfiProgramDependency {
+  struct FfiProgram program;
+  struct FfiBytes32 account_id;
+} FfiProgramDependency;
+
+/**
  * Intended to be created manually.
  */
 typedef struct FfiProgramWithDependencies {
   struct FfiProgram program;
-  const struct FfiProgram *deps;
+  struct FfiBytes32 self_account_id;
+  const struct FfiProgramDependency *deps;
   uintptr_t deps_size;
 } FfiProgramWithDependencies;
 
