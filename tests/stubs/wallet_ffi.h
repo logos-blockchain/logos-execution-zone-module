@@ -127,12 +127,12 @@ typedef struct FfiProgram {
 } FfiProgram;
 
 /**
- * Which of `Public`/`Shadow`/`Private` a program (or dependency) is resolved as.
+ * Which of `Disclosed`/`Shadow`/`Undisclosed` a program (or dependency) is resolved as.
  */
 typedef enum FfiProgramKind {
-  PROGRAM_PUBLIC = 0,
+  PROGRAM_DISCLOSED = 0,
   PROGRAM_SHADOW = 1,
-  PROGRAM_PRIVATE = 2,
+  PROGRAM_UNDISCLOSED = 2,
 } FfiProgramKind;
 
 typedef struct FfiProgramHeader {
@@ -155,6 +155,11 @@ typedef struct FfiMembershipProof {
  */
 typedef struct FfiDependency {
   struct FfiProgram program;
+  /**
+   * Where `program` is actually deployed. Ignored for `ProgramShadow`, whose account id is
+   * always derived from `program` instead — never a real header's address.
+   */
+  struct FfiBytes32 account_id;
   enum FfiProgramKind kind;
   struct FfiProgramHeader program_header;
   struct FfiMembershipProof membership_proof;
@@ -165,6 +170,11 @@ typedef struct FfiDependency {
  */
 typedef struct FfiProgramWithDependencies {
   struct FfiProgram program;
+  /**
+   * Where `program` is actually deployed. Ignored for `ProgramShadow`, whose account id is
+   * always derived from `program` instead — never a real header's address.
+   */
+  struct FfiBytes32 self_account_id;
   enum FfiProgramKind self_kind;
   struct FfiProgramHeader self_program_header;
   struct FfiMembershipProof self_membership_proof;

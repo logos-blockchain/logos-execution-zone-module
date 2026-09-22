@@ -293,6 +293,8 @@ namespace {
     // FfiMembershipProof.path points into proof_path_bytes, which must outlive it.
     struct ParsedProgramKind {
         FfiProgramKind kind{};
+        // Where the header is deployed. Required for Disclosed/Undisclosed; unused for Shadow.
+        FfiBytes32 account_id{};
         FfiProgramHeader program_header{};
         std::vector<uint8_t> proof_path_bytes;
         FfiMembershipProof membership_proof{};
@@ -307,8 +309,10 @@ namespace {
 
         const std::string kindStr = doc[JsonKeys::Kind].get<std::string>();
         if (kindStr == JsonKeys::KindPublic) {
-            out->kind = FfiProgramKind::PROGRAM_PUBLIC;
-            return true;
+            out->kind = FfiProgramKind::PROGRAM_DISCLOSED;
+            if (!doc.contains(JsonKeys::AccountId) || !doc[JsonKeys::AccountId].is_string())
+                return false;
+            return hexToBytes32(doc[JsonKeys::AccountId].get<std::string>(), &out->account_id);
         }
         if (kindStr == JsonKeys::KindShadow) {
             out->kind = FfiProgramKind::PROGRAM_SHADOW;
@@ -316,7 +320,12 @@ namespace {
         }
         if (kindStr != JsonKeys::KindPrivate)
             return false;
-        out->kind = FfiProgramKind::PROGRAM_PRIVATE;
+        out->kind = FfiProgramKind::PROGRAM_UNDISCLOSED;
+
+        if (!doc.contains(JsonKeys::AccountId) || !doc[JsonKeys::AccountId].is_string())
+            return false;
+        if (!hexToBytes32(doc[JsonKeys::AccountId].get<std::string>(), &out->account_id))
+            return false;
 
         if (!doc.contains(JsonKeys::ProgramHeader) || !doc[JsonKeys::ProgramHeader].is_object())
             return false;
@@ -1032,6 +1041,7 @@ std::string LEZCoreModule::send_generic_private_transaction(
 
         FfiDependency dependency{};
         dependency.program = program;
+        dependency.account_id = parsed.account_id;
         dependency.kind = parsed.kind;
         dependency.program_header = parsed.program_header;
         dependency.membership_proof = parsed.membership_proof;
@@ -1045,6 +1055,7 @@ std::string LEZCoreModule::send_generic_private_transaction(
     FfiProgramWithDependencies program_with_dependencies{};
 
     program_with_dependencies.program = main_program;
+    program_with_dependencies.self_account_id = self_parsed.account_id;
     program_with_dependencies.self_kind = self_parsed.kind;
     program_with_dependencies.self_program_header = self_parsed.program_header;
     program_with_dependencies.self_membership_proof = self_parsed.membership_proof;
