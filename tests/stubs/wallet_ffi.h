@@ -242,6 +242,8 @@ typedef struct FfiAccount {
   struct FfiU128 nonce;
 } FfiAccount;
 
+typedef struct FfiBytes32 FfiIdentifier;
+
 /**
  * Result of a transfer operation.
  */
@@ -281,7 +283,7 @@ typedef struct FfiAccountIdentity {
   struct FfiBytes32 nullifier_public_key;
   const uint8_t *viewing_public_key;
   uintptr_t viewing_public_key_len;
-  struct FfiU128 identifier;
+  FfiIdentifier identifier;
 } FfiAccountIdentity;
 
 /**
@@ -621,7 +623,7 @@ enum WalletFfiError wallet_ffi_import_public_account(struct WalletHandle *handle
  * - `handle`: Valid wallet handle
  * - `key_chain_json`: JSON-encoded `key_protocol::key_management::KeyChain`
  * - `chain_index`: Optional chain index string (for example `/0/1`, `NULL` if unknown)
- * - `identifier`: Identifier for this private account as little-endian u128 bytes
+ * - `identifier`: Identifier for this private account as 32 opaque bytes
  * - `account_state_json`: JSON-encoded `wallet::account::HumanReadableAccount`
  *
  * # Returns
@@ -631,13 +633,13 @@ enum WalletFfiError wallet_ffi_import_public_account(struct WalletHandle *handle
  * # Safety
  * - `handle` must be a valid wallet handle from `wallet_ffi_create_new` or `wallet_ffi_open`
  * - `key_chain_json` must be a valid pointer to a null-terminated C string
- * - `identifier` must be a valid pointer to a `FfiU128` struct
+ * - `identifier` must be a valid pointer to a `FfiIdentifier` struct
  * - `account_state_json` must be a valid pointer to a null-terminated C string
  */
 enum WalletFfiError wallet_ffi_import_private_account(struct WalletHandle *handle,
                                                       const char *key_chain_json,
                                                       const char *chain_index,
-                                                      const struct FfiU128 *identifier,
+                                                      const FfiIdentifier *identifier,
                                                       const char *account_state_json);
 
 /**
@@ -1018,7 +1020,7 @@ struct FfiBytes32 wallet_ffi_account_id_for_public_pda(struct FfiBytes32 program
  *   `wallet_ffi_get_private_account_keys`)
  * - `viewing_public_key_len`: length of a `viewing_public_key` (can be obtained from
  *   `wallet_ffi_get_private_account_keys`), must be `1184`
- * - `identifier`: little endian encoded `u128`
+ * - `identifier`: 32-byte opaque identifier
  * - `account_id`: valid pointer to `FfiBytes32`
  *
  * # Returns
@@ -1034,7 +1036,7 @@ enum WalletFfiError wallet_ffi_account_id_for_private_pda(struct FfiBytes32 prog
                                                           FfiNullifierPublicKey npk,
                                                           const uint8_t *viewing_public_key,
                                                           uintptr_t viewing_public_key_len,
-                                                          struct FfiU128 identifier,
+                                                          FfiIdentifier identifier,
                                                           struct FfiBytes32 *account_id);
 
 /**
@@ -1351,7 +1353,7 @@ enum WalletFfiError wallet_ffi_transfer_public(struct WalletHandle *handle,
 enum WalletFfiError wallet_ffi_transfer_shielded(struct WalletHandle *handle,
                                                  const struct FfiBytes32 *from,
                                                  const struct FfiPrivateAccountKeys *to_keys,
-                                                 const struct FfiU128 *to_identifier,
+                                                 const FfiIdentifier *to_identifier,
                                                  const uint8_t (*amount)[16],
                                                  const char *key_path,
                                                  struct FfiTransferResult *out_result);
@@ -1422,7 +1424,7 @@ enum WalletFfiError wallet_ffi_transfer_deshielded(struct WalletHandle *handle,
 enum WalletFfiError wallet_ffi_transfer_private(struct WalletHandle *handle,
                                                 const struct FfiBytes32 *from,
                                                 const struct FfiPrivateAccountKeys *to_keys,
-                                                const struct FfiU128 *to_identifier,
+                                                const FfiIdentifier *to_identifier,
                                                 const uint8_t (*amount)[16],
                                                 struct FfiTransferResult *out_result);
 

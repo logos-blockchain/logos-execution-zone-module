@@ -14,8 +14,8 @@ extern "C" {
 
 namespace MockWalletFfiCapture {
 
-extern uint8_t lastTransferShieldedIdentifier[16];
-extern uint8_t lastTransferPrivateIdentifier[16];
+extern uint8_t lastTransferShieldedIdentifier[32];
+extern uint8_t lastTransferPrivateIdentifier[32];
 
 // Last generic transaction's arguments. Pointers inside are only valid during the call.
 extern std::vector<FfiAccountMention> lastMentions;

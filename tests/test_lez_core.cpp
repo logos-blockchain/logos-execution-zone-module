@@ -384,14 +384,14 @@ LOGOS_TEST(transfer_shielded_with_identifier_forwards_it_unchanged) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
 
-    const std::string identifierHex(32, '7'); // 16 bytes of 0x77
+    const std::string identifierHex(64, '7'); // 32 bytes of 0x77
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a')
         + "\",\"identifier\":\"" + identifierHex + "\"}";
 
     const nlohmann::json obj = parseObject(module.transfer_shielded(VALID_ID, keysJson, VALID_U128));
     LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
 
-    uint8_t expected[16];
+    uint8_t expected[32];
     memset(expected, 0x77, sizeof(expected));
     LOGOS_ASSERT(memcmp(MockWalletFfiCapture::lastTransferShieldedIdentifier, expected, sizeof(expected)) == 0);
 }
@@ -405,13 +405,13 @@ LOGOS_TEST(transfer_shielded_without_identifier_uses_random_nonzero_identifier) 
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + "\"}";
 
     module.transfer_shielded(VALID_ID, keysJson, VALID_U128);
-    uint8_t first[16];
+    uint8_t first[32];
     memcpy(first, MockWalletFfiCapture::lastTransferShieldedIdentifier, sizeof(first));
 
     module.transfer_shielded(VALID_ID, keysJson, VALID_U128);
     const uint8_t* second = MockWalletFfiCapture::lastTransferShieldedIdentifier;
 
-    uint8_t zero[16] = {0};
+    uint8_t zero[32] = {0};
     LOGOS_ASSERT_FALSE(memcmp(first, zero, sizeof(first)) == 0);
     LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
 }
@@ -431,14 +431,14 @@ LOGOS_TEST(transfer_private_with_identifier_forwards_it_unchanged) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
 
-    const std::string identifierHex(32, '7'); // 16 bytes of 0x77
+    const std::string identifierHex(64, '7'); // 32 bytes of 0x77
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a')
         + "\",\"identifier\":\"" + identifierHex + "\"}";
 
     const nlohmann::json obj = parseObject(module.transfer_private(VALID_ID, keysJson, VALID_U128));
     LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
 
-    uint8_t expected[16];
+    uint8_t expected[32];
     memset(expected, 0x77, sizeof(expected));
     LOGOS_ASSERT(memcmp(MockWalletFfiCapture::lastTransferPrivateIdentifier, expected, sizeof(expected)) == 0);
 }
@@ -450,13 +450,13 @@ LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
     const std::string keysJson = std::string("{\"nullifier_public_key\":\"") + std::string(64, 'a') + "\"}";
 
     module.transfer_private(VALID_ID, keysJson, VALID_U128);
-    uint8_t first[16];
+    uint8_t first[32];
     memcpy(first, MockWalletFfiCapture::lastTransferPrivateIdentifier, sizeof(first));
 
     module.transfer_private(VALID_ID, keysJson, VALID_U128);
     const uint8_t* second = MockWalletFfiCapture::lastTransferPrivateIdentifier;
 
-    uint8_t zero[16] = {0};
+    uint8_t zero[32] = {0};
     LOGOS_ASSERT_FALSE(memcmp(first, zero, sizeof(first)) == 0);
     LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
 }

@@ -208,25 +208,21 @@ namespace {
     // identify a key group, not one specific account in it, so get_private_account_keys never
     // attaches one. Kept for forward compatibility (e.g. a hand-crafted or future payload that
     // targets one specific account within a group) and to make the fallback below explicit.
-    bool jsonExtractIdentifier(const std::string& json, FfiU128* out_identifier) {
+    bool jsonExtractIdentifier(const std::string& json, FfiIdentifier* out_identifier) {
         nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
         if (doc.is_discarded() || !doc.is_object())
             return false;
         if (!doc.contains(JsonKeys::Identifier) || !doc[JsonKeys::Identifier].is_string())
             return false;
-        std::vector<uint8_t> buffer;
-        if (!hexToBytes(doc[JsonKeys::Identifier].get<std::string>(), buffer, 16))
-            return false;
-        memcpy(out_identifier->data, buffer.data(), 16);
-        return true;
+        return hexToBytes32(doc[JsonKeys::Identifier].get<std::string>(), out_identifier);
     }
 
     // A foreign recipient's identifier isn't known to the sender; the recipient's wallet
     // recovers it from the encrypted transfer payload the next time it runs sync-private.
-    FfiU128 randomFfiU128() {
+    FfiIdentifier randomFfiIdentifier() {
         static std::mt19937_64 rng(std::random_device{}());
-        FfiU128 value{};
-        for (int i = 0; i < 16; i += 8) {
+        FfiIdentifier value{};
+        for (size_t i = 0; i < sizeof(value.data); i += 8) {
             uint64_t chunk = rng();
             memcpy(value.data + i, &chunk, sizeof(chunk));
         }
@@ -682,9 +678,9 @@ std::string LEZCoreModule::transfer_shielded(
     // to_keys_json never carries an identifier in this codebase (NPK/VPK name a key group,
     // not one account in it) — pick a random one, which the recipient's wallet will recover
     // from the encrypted transfer payload on its next sync-private. See jsonExtractIdentifier.
-    FfiU128 toIdentifier{};
+    FfiIdentifier toIdentifier{};
     if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
-        toIdentifier = randomFfiU128();
+        toIdentifier = randomFfiIdentifier();
     // TODO: Add keycard support
     const char* key_path = nullptr;
 
@@ -757,9 +753,9 @@ std::string LEZCoreModule::transfer_private(
 
     // See transfer_shielded above: to_keys_json never carries an identifier, so always pick
     // a random one for the recipient's wallet to recover via sync-private.
-    FfiU128 toIdentifier{};
+    FfiIdentifier toIdentifier{};
     if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
-        toIdentifier = randomFfiU128();
+        toIdentifier = randomFfiIdentifier();
     FfiTransferResult result{};
     const WalletFfiError error =
         wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, &result);

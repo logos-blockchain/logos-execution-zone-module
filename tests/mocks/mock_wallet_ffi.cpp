@@ -20,8 +20,8 @@ extern "C" {
 #include <cstring>
 
 namespace MockWalletFfiCapture {
-uint8_t lastTransferShieldedIdentifier[16] = {0};
-uint8_t lastTransferPrivateIdentifier[16] = {0};
+uint8_t lastTransferShieldedIdentifier[32] = {0};
+uint8_t lastTransferPrivateIdentifier[32] = {0};
 std::vector<FfiAccountMention> lastMentions;
 FfiBytes32 lastSelfAccountId{};
 std::vector<FfiDependency> lastPrograms;
@@ -338,13 +338,13 @@ WalletFfiError wallet_ffi_transfer_public(
 }
 
 WalletFfiError wallet_ffi_transfer_shielded(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128* identifier,
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiIdentifier* identifier,
     const uint8_t (*)[16],
     const char*,
     FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_shielded");
     if (identifier) {
-        memcpy(MockWalletFfiCapture::lastTransferShieldedIdentifier, identifier->data, 16);
+        memcpy(MockWalletFfiCapture::lastTransferShieldedIdentifier, identifier->data, 32);
     }
     return fillTransferResult("wallet_ffi_transfer_shielded", out_result);
 }
@@ -356,11 +356,11 @@ WalletFfiError wallet_ffi_transfer_deshielded(
 }
 
 WalletFfiError wallet_ffi_transfer_private(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiU128* identifier,
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiIdentifier* identifier,
     const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_private");
     if (identifier) {
-        memcpy(MockWalletFfiCapture::lastTransferPrivateIdentifier, identifier->data, 16);
+        memcpy(MockWalletFfiCapture::lastTransferPrivateIdentifier, identifier->data, 32);
     }
     return fillTransferResult("wallet_ffi_transfer_private", out_result);
 }
