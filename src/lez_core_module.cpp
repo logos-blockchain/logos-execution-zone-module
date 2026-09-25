@@ -907,6 +907,13 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const std::string& payer_account_id_hex,
     const std::vector<std::string>& shard_program_account_ids_hex
 ) {
+    if (signing_requirements.size() != account_ids.size()) {
+        fprintf(stderr, "send_generic_public_transaction: signing_requirements size must match account_ids\n");
+        return transferResultToJson(
+            nullptr, "send_generic_public_transaction: signing_requirements size must match account_ids"
+        );
+    }
+
     FfiBytes32 payer{};
     const FfiBytes32* payer_ptr = nullptr;
     if (!payer_account_id_hex.empty()) {

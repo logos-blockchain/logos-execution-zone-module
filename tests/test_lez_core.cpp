@@ -509,6 +509,39 @@ LOGOS_TEST(send_generic_public_transaction_shard_size_mismatch_error_json) {
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
 }
 
+LOGOS_TEST(send_generic_public_transaction_signing_requirements_size_mismatch_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj =
+        parseObject(module.send_generic_public_transaction({VALID_ID, VALID_ID_2}, {true}, {}, VALID_ID_C, "", {}));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_resolve_public_account"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+}
+
+LOGOS_TEST(send_generic_public_transaction_invalid_account_id_frees_resolved_identities) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj =
+        parseObject(module.send_generic_public_transaction({VALID_ID, "bad"}, {true, false}, {}, VALID_ID_C, "", {}));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_free_account_identity"));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_public_transaction"));
+}
+
+LOGOS_TEST(send_generic_private_transaction_invalid_shards_frees_resolved_identities) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::string root = R"({"kind": "disclosed", "account_id": ")" + VALID_ID_C + R"("})";
+    const nlohmann::json obj =
+        parseObject(module.send_generic_private_transaction({VALID_ID}, {}, {0x7f}, root, {}, {}, {"bad"}));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_free_account_identity"));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
+}
+
 LOGOS_TEST(send_generic_private_transaction_disclosed_root_and_shadow_dependency) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
