@@ -146,10 +146,11 @@ LOGOS_TEST(get_account_public_returns_json) {
 
     const nlohmann::json obj = parseObject(module.get_account_public(VALID_ID));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_account_public"));
-    // program_owner mocked to 0xAA bytes.
-    std::string expectedOwner;
-    for (int i = 0; i < 32; ++i) expectedOwner += "aa";
-    LOGOS_ASSERT_EQ(obj["program_owner"].get<std::string>(), expectedOwner);
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_free_account_data"));
+    LOGOS_ASSERT_EQ(obj["nonce"].get<std::string>(), std::string("01") + std::string(30, '0'));
+    LOGOS_ASSERT_EQ(obj["shards"].size(), static_cast<size_t>(1));
+    LOGOS_ASSERT_EQ(obj["shards"][0]["program"].get<std::string>(), std::string(64, 'a'));
+    LOGOS_ASSERT_EQ(obj["shards"][0]["data"].get<std::string>(), std::string("0708"));
 }
 
 LOGOS_TEST(get_account_public_invalid_hex_returns_empty) {
@@ -458,6 +459,146 @@ LOGOS_TEST(transfer_private_without_identifier_uses_random_nonzero_identifier) {
     uint8_t zero[16] = {0};
     LOGOS_ASSERT_FALSE(memcmp(first, zero, sizeof(first)) == 0);
     LOGOS_ASSERT_FALSE(memcmp(first, second, sizeof(first)) == 0);
+}
+
+// ============================================================================
+// Generic transactions
+// ============================================================================
+
+static bool bytesEqual(const FfiBytes32& bytes, uint8_t value) {
+    for (uint8_t b : bytes.data)
+        if (b != value)
+            return false;
+    return true;
+}
+
+static const std::string VALID_ID_C = std::string(64, 'c');
+static const std::string VALID_ID_D = std::string(64, 'd');
+
+LOGOS_TEST(send_generic_public_transaction_defaults_shards_to_called_program) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj = parseObject(
+        module.send_generic_public_transaction({VALID_ID, VALID_ID_2}, {true, false}, {1, 2}, VALID_ID_C, "", {})
+    );
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_send_generic_public_transaction"));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastMentions.size(), static_cast<size_t>(2));
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastMentions[0].program_account_id, 0xCC));
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastMentions[1].program_account_id, 0xCC));
+}
+
+LOGOS_TEST(send_generic_public_transaction_shard_override) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    module.send_generic_public_transaction({VALID_ID, VALID_ID_2}, {true, false}, {}, VALID_ID_C, "", {VALID_ID_D, ""});
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastMentions[0].program_account_id, 0xDD));
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastMentions[1].program_account_id, 0xCC));
+}
+
+LOGOS_TEST(send_generic_public_transaction_shard_size_mismatch_error_json) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj = parseObject(
+        module.send_generic_public_transaction({VALID_ID, VALID_ID_2}, {true, false}, {}, VALID_ID_C, "", {VALID_ID_D})
+    );
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_public_transaction"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+}
+
+LOGOS_TEST(send_generic_private_transaction_disclosed_root_and_shadow_dependency) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::string root = R"({"kind": "disclosed", "account_id": ")" + VALID_ID_C + R"("})";
+    const nlohmann::json obj = parseObject(module.send_generic_private_transaction(
+        {VALID_ID}, {1}, {0x7f, 'E'}, root, {{0x7f, 'F'}}, {R"({"kind": "shadow"})"}, {}
+    ));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastSelfAccountId, 0xCC));
+    const auto& programs = MockWalletFfiCapture::lastPrograms;
+    LOGOS_ASSERT_EQ(programs.size(), static_cast<size_t>(2));
+    LOGOS_ASSERT_EQ(programs[0].kind, PROGRAM_DISCLOSED);
+    LOGOS_ASSERT_TRUE(bytesEqual(programs[0].account_id, 0xCC));
+    LOGOS_ASSERT_EQ(programs[1].kind, PROGRAM_SHADOW);
+    // Must not be mistaken for the root.
+    LOGOS_ASSERT_FALSE(memcmp(programs[1].account_id.data, MockWalletFfiCapture::lastSelfAccountId.data, 32) == 0);
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastMentions[0].program_account_id, 0xCC));
+}
+
+LOGOS_TEST(send_generic_private_transaction_undisclosed_dependency) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::string root = R"({"kind": "disclosed", "account_id": ")" + VALID_ID_C + R"("})";
+    const std::string dep = R"({"kind": "undisclosed", "account_id": ")" + VALID_ID_D
+        + R"(", "program_header": {"image_id_hex": ")" + VALID_ID + R"(", "program_first_segment_hex": ")"
+        + VALID_ID_2 + R"(", "immutable": true}, "membership_proof": {"index": 3, "path": [")" + VALID_ID + R"("]}})";
+    const nlohmann::json obj =
+        parseObject(module.send_generic_private_transaction({VALID_ID}, {}, {0x7f}, root, {{0x7f}}, {dep}, {}));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+
+    const FfiDependency& d = MockWalletFfiCapture::lastPrograms[1];
+    LOGOS_ASSERT_EQ(d.kind, PROGRAM_UNDISCLOSED);
+    LOGOS_ASSERT_TRUE(bytesEqual(d.account_id, 0xDD));
+    LOGOS_ASSERT_TRUE(bytesEqual(d.program_header.image_id, 0xAA));
+    LOGOS_ASSERT_TRUE(bytesEqual(d.program_header.program_first_segment, 0xBB));
+    LOGOS_ASSERT_TRUE(d.program_header.immutable);
+    LOGOS_ASSERT_EQ(d.membership_proof.index, static_cast<uintptr_t>(3));
+    LOGOS_ASSERT_EQ(d.membership_proof.path_len, static_cast<uintptr_t>(1));
+}
+
+LOGOS_TEST(send_generic_private_transaction_native_root_supplies_no_programs) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::string root = R"({"kind": "disclosed", "account_id": ")" + VALID_ID_C + R"("})";
+    const nlohmann::json obj = parseObject(module.send_generic_private_transaction({VALID_ID}, {}, {}, root, {}, {}, {}));
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+    LOGOS_ASSERT_TRUE(MockWalletFfiCapture::lastPrograms.empty());
+    LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastSelfAccountId, 0xCC));
+}
+
+LOGOS_TEST(send_generic_private_transaction_shadow_root_requires_explicit_shards) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj = parseObject(
+        module.send_generic_private_transaction({VALID_ID}, {}, {0x7f}, R"({"kind": "shadow"})", {}, {}, {})
+    );
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+}
+
+LOGOS_TEST(send_generic_private_transaction_invalid_kind_json_error) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    // Disclosed without account_id, undisclosed without header/proof, unknown kind.
+    for (const std::string& root : std::vector<std::string>{R"({"kind": "disclosed"})",
+                                   R"({"kind": "undisclosed", "account_id": ")" + VALID_ID_C + R"("})",
+                                   R"({"kind": "public", "account_id": ")" + VALID_ID_C + R"("})"}) {
+        const nlohmann::json obj =
+            parseObject(module.send_generic_private_transaction({VALID_ID}, {}, {0x7f}, root, {}, {}, {}));
+        LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    }
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
+}
+
+LOGOS_TEST(send_generic_private_transaction_dependency_kinds_size_mismatch_error) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::string root = R"({"kind": "disclosed", "account_id": ")" + VALID_ID_C + R"("})";
+    const nlohmann::json obj =
+        parseObject(module.send_generic_private_transaction({VALID_ID}, {}, {0x7f}, root, {{0x7f}}, {}, {}));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
 }
 
 // ============================================================================

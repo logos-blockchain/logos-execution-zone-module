@@ -10,7 +10,10 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?ref=v0.2.5-rc2";
+    # Pinned to a `dev` commit (not a tag yet): it carries the FfiAccountMention,
+    # FfiDependency/FfiProgramKind and shard-based FfiAccount shapes this module's FFI calls
+    # require. Swap back to a tagged ref once a release including that commit is cut.
+    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?rev=a146acd8eb48dc604a77d13859603513af4d8dfa";
   };
 
   outputs = inputs@{ logos-module-builder, ... }:

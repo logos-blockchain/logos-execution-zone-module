@@ -77,7 +77,6 @@ public:
     std::string transfer_shielded_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
     std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
 
-    std::vector<uint8_t> authenticated_transfer_elf();
     std::vector<uint8_t> token_elf();
     std::vector<uint8_t> amm_elf();
     std::vector<uint8_t> ata_elf();
@@ -92,8 +91,16 @@ public:
     // `payer_account_id_hex` names the fee payer: one of the signing accounts, or any
     // other public account whose key the wallet holds (it co-signs). Empty = self-pay
     // from the first funded signing account.
-    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex, const std::string& payer_account_id_hex);
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::vector<std::vector<uint8_t>>& program_dependencies);
+    //
+    // `shard_program_account_ids_hex` selects which program's shard of each account the call
+    // sees: empty, or one entry per account, where "" means the called program's shard.
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& instruction, const std::string& program_id_hex, const std::string& payer_account_id_hex, const std::vector<std::string>& shard_program_account_ids_hex);
+    // `program_kind_json` and each `dependency_kinds_json` entry (same order as `program_dependencies`)
+    // is {"kind": "disclosed"|"shadow"|"undisclosed", "account_id": hex}; "account_id" is optional
+    // for shadow, and "undisclosed" also takes "program_header": {"image_id_hex",
+    // "program_first_segment_hex", "immutable"} and "membership_proof": {"index", "path": [hex, ...]}.
+    // An empty `program_elf` runs the disclosed program at "account_id" natively.
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& shard_program_account_ids_hex);
     // Deploys `program_elf` via `program_loader`: one write-once segment account per
     // 96 KiB chunk of the ELF (in chain order), plus a header account pointing at the
     // chain. The wallet must hold the signing keys for every account passed in.
