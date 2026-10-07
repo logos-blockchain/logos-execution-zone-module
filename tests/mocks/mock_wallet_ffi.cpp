@@ -57,7 +57,7 @@ extern "C" {
 
 // === Lifecycle ===
 
-FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char*, const char*) {
+FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_create_new");
     const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_create_new");
     const char* mnemonic_ok = LOGOS_CMOCK_RETURN_STRING("wallet_ffi_create_new");
@@ -68,7 +68,7 @@ FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char
     return output;
 }
 
-WalletHandle* wallet_ffi_open(const char*, const char*, const char*) {
+WalletHandle* wallet_ffi_open(const char*, const char*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_open");
     const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_open");
     return ok ? reinterpret_cast<WalletHandle*>(&g_fakeWallet) : nullptr;
@@ -385,19 +385,6 @@ void wallet_ffi_free_transfer_result(FfiTransferResult* result) {
         free(result->tx_hash);
         result->tx_hash = nullptr;
     }
-}
-
-WalletFfiError wallet_ffi_token_elf(FfiProgram *ffi_program) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_token_elf");
-    return fillProgram("wallet_ffi_token_elf", ffi_program);
-}
-WalletFfiError wallet_ffi_ata_elf(FfiProgram *ffi_program) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_ata_elf");
-    return fillProgram("wallet_ffi_ata_elf", ffi_program);
-}
-WalletFfiError wallet_ffi_amm_elf(FfiProgram *ffi_program) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_amm_elf");
-    return fillProgram("wallet_ffi_amm_elf", ffi_program);
 }
 
 WalletFfiError wallet_ffi_resolve_public_account(FfiBytes32 account_id, bool needs_sign, FfiAccountIdentity *out_account_identity) {

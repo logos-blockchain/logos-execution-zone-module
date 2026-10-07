@@ -427,7 +427,7 @@ std::string LEZCoreModule::name() const {
 }
 
 std::string LEZCoreModule::version() const {
-    return "0.3.0";
+    return "1.0.0";
 }
 
 // === Wallet Location ===
@@ -857,48 +857,6 @@ std::string LEZCoreModule::bridge_withdraw(
     return resultJson;
 }
 
-std::vector<uint8_t> LEZCoreModule::token_elf() {
-    FfiProgram ffi_program{};
-    WalletFfiError error = wallet_ffi_token_elf(&ffi_program);
-    if (error != SUCCESS) {
-        fprintf(stderr, "token_elf: wallet FFI error %d\n", error);
-        return std::vector<uint8_t>{};
-    }
-
-    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
-
-    wallet_ffi_free_ffi_program(&ffi_program);
-    return result;
-}
-
-std::vector<uint8_t> LEZCoreModule::amm_elf() {
-    FfiProgram ffi_program{};
-    WalletFfiError error = wallet_ffi_amm_elf(&ffi_program);
-    if (error != SUCCESS) {
-        fprintf(stderr, "amm_elf: wallet FFI error %d\n", error);
-        return std::vector<uint8_t>{};
-    }
-
-    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
-
-    wallet_ffi_free_ffi_program(&ffi_program);
-    return result;
-}
-
-std::vector<uint8_t> LEZCoreModule::ata_elf() {
-    FfiProgram ffi_program{};
-    WalletFfiError error = wallet_ffi_ata_elf(&ffi_program);
-    if (error != SUCCESS) {
-        fprintf(stderr, "ata_elf: wallet FFI error %d\n", error);
-        return std::vector<uint8_t>{};
-    }
-
-    std::vector<uint8_t> result(ffi_program.elf_data, ffi_program.elf_data + ffi_program.elf_size);
-
-    wallet_ffi_free_ffi_program(&ffi_program);
-    return result;
-}
-
 std::string LEZCoreModule::send_generic_public_transaction(
     const std::vector<std::string>& account_ids,
     const std::vector<bool>& signing_requirements,
@@ -1227,7 +1185,6 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 std::string LEZCoreModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
-    const std::string& statistics_path,
     const std::string& password
 ) {
     if (walletHandle) {
@@ -1236,7 +1193,7 @@ std::string LEZCoreModule::create_new(
     }
 
     FfiCreateWalletOutput create_output =
-        wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), statistics_path.c_str(), password.c_str());
+        wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
     if (!create_output.wallet) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
         return {};
@@ -1263,14 +1220,13 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::s
 int64_t LEZCoreModule::open(
     const std::string& config_path,
     const std::string& storage_path,
-    const std::string& statistics_path
 ) {
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
         return INTERNAL_ERROR;
     }
 
-    walletHandle = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), statistics_path.c_str());
+    walletHandle = wallet_ffi_open(config_path.c_str(), storage_path.c_str());
     if (!walletHandle) {
         fprintf(stderr, "open: wallet_ffi_open returned null\n");
         return INTERNAL_ERROR;
