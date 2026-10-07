@@ -1219,7 +1219,7 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::s
 
 int64_t LEZCoreModule::open(
     const std::string& config_path,
-    const std::string& storage_path,
+    const std::string& storage_path
 ) {
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
