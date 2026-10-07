@@ -83,7 +83,7 @@ void wallet_ffi_destroy(WalletHandle*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_destroy");
 }
 
-WalletFfiError wallet_ffi_restore_data(WalletHandle*, const char*, const char*, uint32_t) {
+WalletFfiError wallet_ffi_restore_data(WalletHandle*, const char*, const char*, uint64_t) {
     LOGOS_CMOCK_RECORD("wallet_ffi_restore_data");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_restore_data");
     return static_cast<WalletFfiError>(err);
