@@ -10,7 +10,8 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    # the ref commit is latest breaking changes on dev
+    # the ref commit is latest breaking changes on dev, including removal of amm, ata, token programs
+    # and statistics collection removal. 
     logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?rev=24789fb791d483c5af422b717f3344cc1d4aed0f";
   };
 
