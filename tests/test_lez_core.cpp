@@ -29,7 +29,7 @@ static nlohmann::json parseObject(const std::string& json) {
 LOGOS_TEST(name_and_version) {
     LEZCoreModule module;
     LOGOS_ASSERT_EQ(module.name(), std::string("lez_core"));
-    LOGOS_ASSERT_EQ(module.version(), std::string("0.3.0"));
+    LOGOS_ASSERT_EQ(module.version(), std::string("1.0.0"));
 }
 
 // ============================================================================
@@ -712,10 +712,10 @@ LOGOS_TEST(create_new_success_then_double_open_fails) {
     t.mockCFunction("wallet_ffi_create_new").returns(1); // non-null handle
     LEZCoreModule module;
 
-    LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "/stats", "pw").empty());
+    LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw").empty());
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_new"));
     // Second attempt: already open.
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "/stats", "pw"), "");
+    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
 }
 
 LOGOS_TEST(create_new_null_handle_returns_internal_error) {
@@ -723,7 +723,7 @@ LOGOS_TEST(create_new_null_handle_returns_internal_error) {
     t.mockCFunction("wallet_ffi_create_new").returns(0); // null handle
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "/stats", "pw"), "");
+    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
 }
 
 LOGOS_TEST(open_success) {
@@ -731,7 +731,7 @@ LOGOS_TEST(open_success) {
     t.mockCFunction("wallet_ffi_open").returns(1);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.open("/cfg", "/store", "/stats"), static_cast<int64_t>(SUCCESS));
+    LOGOS_ASSERT_EQ(module.open("/cfg", "/store"), static_cast<int64_t>(SUCCESS));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_open"));
 }
 

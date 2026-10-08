@@ -213,12 +213,12 @@ sections:
 
       - title: "Read the module version"
         text: |
-          `version` returns the module's semantic version (`0.2.0`), matching
+          `version` returns the module's semantic version (`1.0.0`), matching
           `metadata.json`:
         run: "./logos/bin/logoscore call lez_core version"
         code_block: "logoscore call lez_core version"
         expect_contains:
-          - '"result":"0.3.0"'
+          - '"result":"1.0.0"'
 
       - title: "Encode an account id to base58"
         text: |
