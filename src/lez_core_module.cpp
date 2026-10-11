@@ -427,7 +427,7 @@ std::string LEZCoreModule::name() const {
 }
 
 std::string LEZCoreModule::version() const {
-    return "1.0.0";
+    return "1.1.0";
 }
 
 // === Wallet Location ===
