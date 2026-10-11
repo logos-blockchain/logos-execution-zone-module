@@ -10,9 +10,11 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    # the ref commit is latest breaking changes on dev, including removal of amm, ata, token programs
-    # and statistics collection removal. 
-    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?rev=24789fb791d483c5af422b717f3344cc1d4aed0f";
+    lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
+    logos-execution-zone = {
+      url = "github:logos-blockchain/logos-execution-zone?ref=v0.3.1";
+      inputs.rust-overlay.follows = "lez-rust-overlay";
+    };
   };
 
   outputs = inputs@{ logos-module-builder, ... }:
