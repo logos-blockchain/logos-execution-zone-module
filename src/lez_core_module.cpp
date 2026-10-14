@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -69,6 +71,10 @@ namespace {
         constexpr auto MembershipProof = "membership_proof";
         constexpr auto Index = "index";
         constexpr auto Path = "path";
+        constexpr auto KindPrivateOwned = "private_owned";
+        constexpr auto KindPublic = "public";
+        constexpr auto KindPublicNoSign = "public_no_sign";
+        constexpr auto KindPrivateForeign = "private_foreign";
     } // namespace JsonKeys
 
     bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength = -1) {
@@ -411,6 +417,264 @@ namespace {
         return true;
     }
 
+    // Identities for one private send. Those resolved by the wallet FFI hold Rust allocations
+    // and go back through `wallet_ffi_free_account_identity`; foreign ones point at viewing keys
+    // held here instead, so they must never reach it.
+    struct PrivateSendAccounts {
+        std::vector<FfiAccountIdentity> identities;
+        std::vector<bool> resolved_by_ffi;
+        std::vector<std::unique_ptr<std::vector<uint8_t>>> viewing_keys;
+
+        PrivateSendAccounts() = default;
+        PrivateSendAccounts(const PrivateSendAccounts&) = delete;
+        PrivateSendAccounts& operator=(const PrivateSendAccounts&) = delete;
+
+        ~PrivateSendAccounts() {
+            for (size_t i = 0; i < identities.size(); ++i) {
+                if (resolved_by_ffi[i])
+                    wallet_ffi_free_account_identity(&identities[i]);
+            }
+        }
+
+        void addResolved(const FfiAccountIdentity& identity) {
+            identities.push_back(identity);
+            resolved_by_ffi.push_back(true);
+        }
+
+        void addForeign(FfiAccountIdentity identity, std::vector<uint8_t> viewing_key) {
+            viewing_keys.push_back(std::make_unique<std::vector<uint8_t>>(std::move(viewing_key)));
+            identity.viewing_public_key = viewing_keys.back()->data();
+            identity.viewing_public_key_len = static_cast<uintptr_t>(viewing_keys.back()->size());
+            identities.push_back(identity);
+            resolved_by_ffi.push_back(false);
+        }
+    };
+
+    using AccountsResolver = std::function<bool(PrivateSendAccounts&, std::string&)>;
+
+    bool resolveOwnedPrivateAccounts(
+        WalletHandle* wallet_handle,
+        const std::vector<std::string>& account_ids,
+        PrivateSendAccounts& accounts,
+        std::string& error
+    ) {
+        for (size_t i = 0; i < account_ids.size(); ++i) {
+            FfiBytes32 id{};
+            if (!hexToBytes32(account_ids[i], &id)) {
+                error = "invalid account_id_hex[" + std::to_string(i) + "]";
+                return false;
+            }
+            FfiAccountIdentity identity{};
+            const WalletFfiError ffi_error = wallet_ffi_resolve_private_account(wallet_handle, id, &identity);
+            if (ffi_error != SUCCESS) {
+                error = "wallet_ffi_resolve_private_account failed for account " + std::to_string(i) +
+                        ": wallet FFI error " + std::to_string(ffi_error);
+                return false;
+            }
+            accounts.addResolved(identity);
+        }
+        return true;
+    }
+
+    // ML-KEM-768 encapsulation key length; the wallet FFI rejects any other.
+    constexpr size_t VIEWING_PUBLIC_KEY_LEN = 1184;
+
+    // One `accounts_json` entry of `send_generic_private_transaction_with_accounts`.
+    bool resolveDescribedAccount(
+        WalletHandle* wallet_handle,
+        const std::string& json,
+        PrivateSendAccounts& accounts,
+        std::string& error
+    ) {
+        const nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
+        if (doc.is_discarded() || !doc.is_object() || !doc.contains(JsonKeys::Kind) ||
+            !doc[JsonKeys::Kind].is_string()) {
+            error = "needs a \"kind\"";
+            return false;
+        }
+        const std::string kind = doc[JsonKeys::Kind].get<std::string>();
+
+        if (kind == JsonKeys::KindPrivateForeign) {
+            FfiAccountIdentity identity{};
+            identity.kind = FfiAccountIdentityKind::PRIVATE_FOREIGN;
+            if (!doc.contains(JsonKeys::NullifierPublicKey) || !doc[JsonKeys::NullifierPublicKey].is_string() ||
+                !hexToBytes32(doc[JsonKeys::NullifierPublicKey].get<std::string>(), &identity.nullifier_public_key)) {
+                error = "private_foreign needs a 32-byte \"nullifier_public_key\"";
+                return false;
+            }
+            std::vector<uint8_t> viewing_key;
+            if (!doc.contains(JsonKeys::ViewingPublicKey) || !doc[JsonKeys::ViewingPublicKey].is_string() ||
+                !hexToBytes(
+                    doc[JsonKeys::ViewingPublicKey].get<std::string>(),
+                    viewing_key,
+                    static_cast<int>(VIEWING_PUBLIC_KEY_LEN)
+                )) {
+                error = "private_foreign needs a 1184-byte \"viewing_public_key\"";
+                return false;
+            }
+            if (doc.contains(JsonKeys::Identifier)) {
+                if (!jsonExtractIdentifier(json, &identity.identifier)) {
+                    error = "private_foreign has an invalid \"identifier\"";
+                    return false;
+                }
+            } else {
+                // A new account under the recipient's keys, which its wallet finds on its next sync.
+                identity.identifier = randomFfiIdentifier();
+            }
+            accounts.addForeign(identity, std::move(viewing_key));
+            return true;
+        }
+
+        FfiBytes32 id{};
+        if (!doc.contains(JsonKeys::AccountId) || !doc[JsonKeys::AccountId].is_string() ||
+            !hexToBytes32(doc[JsonKeys::AccountId].get<std::string>(), &id)) {
+            error = kind + " needs a 32-byte \"account_id\"";
+            return false;
+        }
+        FfiAccountIdentity identity{};
+        WalletFfiError ffi_error = SUCCESS;
+        if (kind == JsonKeys::KindPrivateOwned) {
+            ffi_error = wallet_ffi_resolve_private_account(wallet_handle, id, &identity);
+        } else if (kind == JsonKeys::KindPublic || kind == JsonKeys::KindPublicNoSign) {
+            ffi_error = wallet_ffi_resolve_public_account(id, kind == JsonKeys::KindPublic, &identity);
+        } else {
+            error = "unknown kind \"" + kind + "\"";
+            return false;
+        }
+        if (ffi_error != SUCCESS) {
+            error = "resolving " + kind + " failed: wallet FFI error " + std::to_string(ffi_error);
+            return false;
+        }
+        accounts.addResolved(identity);
+        return true;
+    }
+
+    // Shared by both generic private sends, which differ only in how they resolve their accounts.
+    std::string sendGenericPrivateTransaction(
+        WalletHandle* wallet_handle,
+        const char* method,
+        const AccountsResolver& resolve_accounts,
+        const std::vector<uint8_t>& instruction,
+        const std::vector<uint8_t>& program_elf,
+        const std::string& program_kind_json,
+        const std::vector<std::vector<uint8_t>>& program_dependencies,
+        const std::vector<std::string>& dependency_kinds_json,
+        const std::vector<std::string>& shard_program_account_ids_hex
+    ) {
+        if (dependency_kinds_json.size() != program_dependencies.size()) {
+            fprintf(stderr, "%s: dependency_kinds_json size must match program_dependencies\n", method);
+            return transferResultToJson(
+                nullptr, std::string(method) + ": dependency_kinds_json size must match program_dependencies"
+            );
+        }
+
+        ParsedProgramKind root{};
+        if (!jsonToProgramKind(program_kind_json, &root)) {
+            fprintf(stderr, "%s: invalid program_kind_json\n", method);
+            return transferResultToJson(nullptr, std::string(method) + ": invalid program_kind_json");
+        }
+        // Native execution supplies no bytecode, so it can only be dispatched at a known address.
+        if (program_elf.empty() && root.kind != FfiProgramKind::PROGRAM_DISCLOSED) {
+            fprintf(stderr, "%s: an empty program_elf requires a disclosed kind\n", method);
+            return transferResultToJson(
+                nullptr, std::string(method) + ": an empty program_elf requires a disclosed kind"
+            );
+        }
+
+        // The FFI picks the root as the entry whose account_id equals self_account_id, so shadow
+        // dependencies (whose account_id is otherwise ignored) get one that never matches.
+        const FfiBytes32 self_account_id = root.account_id;
+        FfiBytes32 never_self{};
+        for (int i = 0; i < 32; ++i)
+            never_self.data[i] = static_cast<uint8_t>(~self_account_id.data[i]);
+
+        std::vector<ParsedProgramKind> dependency_kinds(program_dependencies.size());
+        for (size_t i = 0; i < program_dependencies.size(); ++i) {
+            if (!jsonToProgramKind(dependency_kinds_json[i], &dependency_kinds[i])) {
+                fprintf(stderr, "%s: invalid dependency_kinds_json[%zu]\n", method, i);
+                return transferResultToJson(
+                    nullptr, std::string(method) + ": invalid dependency_kinds_json[" + std::to_string(i) + "]"
+                );
+            }
+            if (dependency_kinds[i].kind != FfiProgramKind::PROGRAM_SHADOW &&
+                memcmp(dependency_kinds[i].account_id.data, self_account_id.data, 32) == 0) {
+                fprintf(stderr, "%s: dependency %zu has the root's account_id\n", method, i);
+                return transferResultToJson(
+                    nullptr, std::string(method) + ": dependency " + std::to_string(i) + " has the root's account_id"
+                );
+            }
+        }
+
+        auto toFfiDependency =
+            [](const std::vector<uint8_t>& elf, const ParsedProgramKind& parsed, const FfiBytes32& account_id) {
+                FfiDependency dependency{};
+                dependency.program.elf_data = elf.data();
+                dependency.program.elf_size = static_cast<uintptr_t>(elf.size());
+                dependency.account_id = account_id;
+                dependency.kind = parsed.kind;
+                dependency.program_header = parsed.program_header;
+                dependency.membership_proof = parsed.membership_proof;
+                return dependency;
+            };
+
+        std::vector<FfiDependency> programs;
+        programs.reserve(program_dependencies.size() + 1);
+        if (!program_elf.empty())
+            programs.push_back(toFfiDependency(program_elf, root, self_account_id));
+        for (size_t i = 0; i < program_dependencies.size(); ++i) {
+            const ParsedProgramKind& parsed = dependency_kinds[i];
+            const bool is_shadow = parsed.kind == FfiProgramKind::PROGRAM_SHADOW;
+            programs.push_back(
+                toFfiDependency(program_dependencies[i], parsed, is_shadow ? never_self : parsed.account_id)
+            );
+        }
+
+        FfiProgramWithDependencies program_with_dependencies{};
+        program_with_dependencies.self_account_id = self_account_id;
+        program_with_dependencies.programs = programs.data();
+        program_with_dependencies.programs_size = static_cast<uintptr_t>(programs.size());
+
+        PrivateSendAccounts accounts;
+        std::string resolve_error;
+        if (!resolve_accounts(accounts, resolve_error)) {
+            fprintf(stderr, "%s: %s\n", method, resolve_error.c_str());
+            return transferResultToJson(nullptr, std::string(method) + ": " + resolve_error);
+        }
+
+        std::vector<FfiAccountMention> mentions;
+        std::string mentions_error;
+        if (!buildAccountMentions(
+                accounts.identities,
+                shard_program_account_ids_hex,
+                root.has_account_id ? &root.account_id : nullptr,
+                mentions,
+                mentions_error
+            )) {
+            fprintf(stderr, "%s: %s\n", method, mentions_error.c_str());
+            return transferResultToJson(nullptr, std::string(method) + ": " + mentions_error);
+        }
+
+        FfiTransactionResult result{};
+
+        const WalletFfiError error = wallet_ffi_send_generic_private_transaction(
+            wallet_handle,
+            mentions.data(),
+            static_cast<uintptr_t>(mentions.size()),
+            instruction.data(),
+            static_cast<uintptr_t>(instruction.size()),
+            &program_with_dependencies,
+            &result
+        );
+
+        if (error != SUCCESS) {
+            fprintf(stderr, "%s: wallet FFI error %d\n", method, error);
+            return transferResultToJson(nullptr, std::string(method) + ": wallet FFI error " + std::to_string(error));
+        }
+        std::string resultJson = genericTransactionResultToJson(&result, std::string());
+        wallet_ffi_free_transaction_result(&result);
+        return resultJson;
+    }
+
 } // namespace
 
 LEZCoreModule::LEZCoreModule() = default;
@@ -427,7 +691,7 @@ std::string LEZCoreModule::name() const {
 }
 
 std::string LEZCoreModule::version() const {
-    return "0.5.1";
+    return "0.5.2";
 }
 
 // === Wallet Location ===
@@ -964,150 +1228,50 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const std::vector<std::string>& dependency_kinds_json,
     const std::vector<std::string>& shard_program_account_ids_hex
 ) {
-    if (dependency_kinds_json.size() != program_dependencies.size()) {
-        fprintf(
-            stderr, "send_generic_private_transaction: dependency_kinds_json size must match program_dependencies\n"
-        );
-        return transferResultToJson(
-            nullptr, "send_generic_private_transaction: dependency_kinds_json size must match program_dependencies"
-        );
-    }
-
-    ParsedProgramKind root{};
-    if (!jsonToProgramKind(program_kind_json, &root)) {
-        fprintf(stderr, "send_generic_private_transaction: invalid program_kind_json\n");
-        return transferResultToJson(nullptr, "send_generic_private_transaction: invalid program_kind_json");
-    }
-    // Native execution supplies no bytecode, so it can only be dispatched at a known address.
-    if (program_elf.empty() && root.kind != FfiProgramKind::PROGRAM_DISCLOSED) {
-        fprintf(stderr, "send_generic_private_transaction: an empty program_elf requires a disclosed kind\n");
-        return transferResultToJson(
-            nullptr, "send_generic_private_transaction: an empty program_elf requires a disclosed kind"
-        );
-    }
-
-    // The FFI picks the root as the entry whose account_id equals self_account_id, so shadow
-    // dependencies (whose account_id is otherwise ignored) get one that never matches.
-    const FfiBytes32 self_account_id = root.account_id;
-    FfiBytes32 never_self{};
-    for (int i = 0; i < 32; ++i)
-        never_self.data[i] = static_cast<uint8_t>(~self_account_id.data[i]);
-
-    std::vector<ParsedProgramKind> dependency_kinds(program_dependencies.size());
-    for (size_t i = 0; i < program_dependencies.size(); ++i) {
-        if (!jsonToProgramKind(dependency_kinds_json[i], &dependency_kinds[i])) {
-            fprintf(stderr, "send_generic_private_transaction: invalid dependency_kinds_json[%zu]\n", i);
-            return transferResultToJson(
-                nullptr, "send_generic_private_transaction: invalid dependency_kinds_json[" + std::to_string(i) + "]"
-            );
-        }
-        if (dependency_kinds[i].kind != FfiProgramKind::PROGRAM_SHADOW &&
-            memcmp(dependency_kinds[i].account_id.data, self_account_id.data, 32) == 0) {
-            fprintf(stderr, "send_generic_private_transaction: dependency %zu has the root's account_id\n", i);
-            return transferResultToJson(
-                nullptr,
-                "send_generic_private_transaction: dependency " + std::to_string(i) + " has the root's account_id"
-            );
-        }
-    }
-
-    auto toFfiDependency =
-        [](const std::vector<uint8_t>& elf, const ParsedProgramKind& parsed, const FfiBytes32& account_id) {
-            FfiDependency dependency{};
-            dependency.program.elf_data = elf.data();
-            dependency.program.elf_size = static_cast<uintptr_t>(elf.size());
-            dependency.account_id = account_id;
-            dependency.kind = parsed.kind;
-            dependency.program_header = parsed.program_header;
-            dependency.membership_proof = parsed.membership_proof;
-            return dependency;
-        };
-
-    std::vector<FfiDependency> programs;
-    programs.reserve(program_dependencies.size() + 1);
-    if (!program_elf.empty())
-        programs.push_back(toFfiDependency(program_elf, root, self_account_id));
-    for (size_t i = 0; i < program_dependencies.size(); ++i) {
-        const ParsedProgramKind& parsed = dependency_kinds[i];
-        const bool is_shadow = parsed.kind == FfiProgramKind::PROGRAM_SHADOW;
-        programs.push_back(
-            toFfiDependency(program_dependencies[i], parsed, is_shadow ? never_self : parsed.account_id)
-        );
-    }
-
-    FfiProgramWithDependencies program_with_dependencies{};
-    program_with_dependencies.self_account_id = self_account_id;
-    program_with_dependencies.programs = programs.data();
-    program_with_dependencies.programs_size = static_cast<uintptr_t>(programs.size());
-
-    std::vector<FfiAccountIdentity> identities_resolved;
-    identities_resolved.reserve(account_ids.size());
-    auto free_identities = [&identities_resolved]() {
-        for (FfiAccountIdentity& acc_identity : identities_resolved) {
-            wallet_ffi_free_account_identity(&acc_identity);
-        }
-    };
-
-    for (int i = 0; i < account_ids.size(); ++i) {
-        FfiAccountIdentity acc_identity{};
-
-        FfiBytes32 id{};
-        if (!hexToBytes32(account_ids[i], &id)) {
-            fprintf(stderr, "wallet_ffi_resolve_private_account: invalid account_id_hex");
-            free_identities();
-            return transferResultToJson(
-                nullptr, std::string("wallet_ffi_resolve_private_account: invalid account_id_hex")
-            );
-        }
-
-        WalletFfiError error = wallet_ffi_resolve_private_account(walletHandle, id, &acc_identity);
-        if (error != SUCCESS) {
-            fprintf(stderr, "wallet_ffi_resolve_private_account failed for index %d: wallet FFI error %d\n", i, error);
-            free_identities();
-            return transferResultToJson(
-                nullptr, std::string("wallet_ffi_resolve_private_account: wallet FFI error ") + std::to_string(error)
-            );
-        }
-        identities_resolved.push_back(acc_identity);
-    }
-
-    std::vector<FfiAccountMention> mentions;
-    std::string mentions_error;
-    if (!buildAccountMentions(
-            identities_resolved,
-            shard_program_account_ids_hex,
-            root.has_account_id ? &root.account_id : nullptr,
-            mentions,
-            mentions_error
-        )) {
-        fprintf(stderr, "send_generic_private_transaction: %s\n", mentions_error.c_str());
-        free_identities();
-        return transferResultToJson(nullptr, "send_generic_private_transaction: " + mentions_error);
-    }
-
-    FfiTransactionResult result{};
-
-    const WalletFfiError error = wallet_ffi_send_generic_private_transaction(
+    return sendGenericPrivateTransaction(
         walletHandle,
-        mentions.data(),
-        static_cast<uintptr_t>(mentions.size()),
-        instruction.data(),
-        static_cast<uintptr_t>(instruction.size()),
-        &program_with_dependencies,
-        &result
+        "send_generic_private_transaction",
+        [this, &account_ids](PrivateSendAccounts& accounts, std::string& error) {
+            return resolveOwnedPrivateAccounts(walletHandle, account_ids, accounts, error);
+        },
+        instruction,
+        program_elf,
+        program_kind_json,
+        program_dependencies,
+        dependency_kinds_json,
+        shard_program_account_ids_hex
     );
+}
 
-    free_identities();
-
-    if (error != SUCCESS) {
-        fprintf(stderr, "send_generic_private_transaction: wallet FFI error %d\n", error);
-        return transferResultToJson(
-            nullptr, std::string("send_generic_private_transaction: wallet FFI error ") + std::to_string(error)
-        );
-    }
-    std::string resultJson = genericTransactionResultToJson(&result, std::string());
-    wallet_ffi_free_transaction_result(&result);
-    return resultJson;
+std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
+    const std::vector<std::string>& accounts_json,
+    const std::vector<uint8_t>& instruction,
+    const std::vector<uint8_t>& program_elf,
+    const std::string& program_kind_json,
+    const std::vector<std::vector<uint8_t>>& program_dependencies,
+    const std::vector<std::string>& dependency_kinds_json,
+    const std::vector<std::string>& shard_program_account_ids_hex
+) {
+    return sendGenericPrivateTransaction(
+        walletHandle,
+        "send_generic_private_transaction_with_accounts",
+        [this, &accounts_json](PrivateSendAccounts& accounts, std::string& error) {
+            for (size_t i = 0; i < accounts_json.size(); ++i) {
+                std::string account_error;
+                if (!resolveDescribedAccount(walletHandle, accounts_json[i], accounts, account_error)) {
+                    error = "accounts_json[" + std::to_string(i) + "] " + account_error;
+                    return false;
+                }
+            }
+            return true;
+        },
+        instruction,
+        program_elf,
+        program_kind_json,
+        program_dependencies,
+        dependency_kinds_json,
+        shard_program_account_ids_hex
+    );
 }
 
 // clang-format off

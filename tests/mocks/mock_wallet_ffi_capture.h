@@ -19,6 +19,8 @@ extern uint8_t lastTransferPrivateIdentifier[32];
 
 // Last generic transaction's arguments. Pointers inside are only valid during the call.
 extern std::vector<FfiAccountMention> lastMentions;
+// Each last mention's viewing public key bytes, copied while the call's pointers were valid.
+extern std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
 extern FfiBytes32 lastSelfAccountId;
 extern std::vector<FfiDependency> lastPrograms;
 
