@@ -97,6 +97,18 @@ public:
     // "program_first_segment_hex", "immutable"} and "membership_proof": {"index", "path": [hex, ...]}.
     // An empty `program_elf` runs the disclosed program at "account_id" natively.
     std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& shard_program_account_ids_hex);
+    // Like `send_generic_private_transaction`, but each account is described rather than assumed to
+    // be one of this wallet's private accounts, so a private transaction can also mention public
+    // accounts and create accounts for other users. Each `accounts_json` entry is one of
+    //   {"kind": "private_owned", "account_id": hex}   this wallet's private account
+    //   {"kind": "public", "account_id": hex}          a public account this wallet signs for
+    //   {"kind": "public_no_sign", "account_id": hex}  a public account mentioned without signing
+    //   {"kind": "private_foreign", "nullifier_public_key": hex, "viewing_public_key": hex,
+    //    "identifier": hex}                            a new private account under another user's keys
+    // "private_foreign" takes the keys as `get_private_account_keys` returns them; without an
+    // "identifier" a random one is picked, and the recipient's wallet finds the account on its next
+    // sync. The other arguments are as for `send_generic_private_transaction`.
+    std::string send_generic_private_transaction_with_accounts(const std::vector<std::string>& accounts_json, const std::vector<uint8_t>& instruction, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& shard_program_account_ids_hex);
     // Deploys `program_elf` via `program_loader`: one write-once segment account per
     // 96 KiB chunk of the ELF (in chain order), plus a header account pointing at the
     // chain. The wallet must hold the signing keys for every account passed in.
