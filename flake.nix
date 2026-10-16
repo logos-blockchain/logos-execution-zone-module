@@ -4,7 +4,11 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
-    logos-execution-zone.url = "github:logos-blockchain/logos-execution-zone?ref=erhant/0.2.4-with-r0-fix";
+    lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
+    logos-execution-zone = {
+      url = "github:logos-blockchain/logos-execution-zone?rev=80a648a155e524cf869b62778871b95cd6ac36a3";
+      inputs.rust-overlay.follows = "lez-rust-overlay";
+    };
   };
 
   outputs = inputs@{ logos-module-builder, ... }:
