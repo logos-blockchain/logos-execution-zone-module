@@ -2,7 +2,7 @@ name: execution-zone-module Doc-Tests
 
 # Runs the executable execution-zone-module doc-test
 # (doctests/logos-execution-zone-runtime.test.yaml) end-to-end via the shared
-# doctest CLI: builds logoscore and lgpm, packages and installs THIS commit of
+# doctest CLI: builds logosctl, packages and installs THIS commit of
 # the execution-zone module as an .lgx, starts the daemon, loads the module,
 # calls its methods, and asserts on the output.
 #
@@ -219,7 +219,7 @@ jobs:
               `${marker}\n` +
               `### 📊 execution-zone-module doc-test report\n\n` +
               `This commit of the execution-zone module, packaged as an \`.lgx\` and run ` +
-              `through a logoscore daemon — rendered alongside the commands actually ` +
+              `through a logosctl daemon — rendered alongside the commands actually ` +
               `run and their output (updated each run, commit \`${context.sha.slice(0,7)}\`):\n\n` +
               `${links}\n\n` +
               `_Pages can take a minute to update after the run finishes._`;

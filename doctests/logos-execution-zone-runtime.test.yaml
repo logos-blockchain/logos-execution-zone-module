@@ -1,4 +1,4 @@
-name: "Running This Execution-Zone Module Against logoscore"
+name: "Running This Execution-Zone Module Against logosctl"
 output: logos-execution-zone-runtime.md
 release: ""
 
@@ -8,19 +8,18 @@ intro: |
   (`wallet_ffi`) to provide wallet lifecycle, account management, balance and
   block queries, transfers, and account-id encoding. This
   doc-test exercises **this** execution-zone-module commit end-to-end through the
-  headless `logoscore` runtime:
+  headless `logosctl` runtime:
 
-  1. Build the `logoscore` CLI and the `lgpm` local package manager from their
-     published flakes. `logoscore` is the headless frontend for `logos-liblogos`,
-     so building it brings in the whole module-runtime stack (`logos_host`,
-     `liblogos_core`, the IPC layer).
+  1. Build the `logosctl` CLI from its published flake. `logosctl` is the
+     headless frontend for `logos-liblogos`, so building it brings in the whole
+     module-runtime stack (`logos_host`, `liblogos_core`, the IPC layer).
   2. Build **this** execution-zone module as an installable `.lgx` package
      straight from its own flake's `#lgx` output, **pinned to the commit under
      test** — so the module you run is built from exactly what is checked out
      here, not the latest published release.
-  3. Install the `.lgx` into a `./modules` directory with `lgpm`.
-  4. Start `logoscore` in daemon mode (`-D`), load `logos_execution_zone`,
-     introspect it with `module-info`, and call its wallet-free methods —
+  3. Start a `logosctl` daemon and install the `.lgx` into its session.
+  4. Load `logos_execution_zone`, introspect it with `module show`, and call its
+     wallet-free methods —
      verifying the module actually runs and round-trips real values through
      `wallet_ffi`.
 
@@ -33,16 +32,16 @@ intro: |
   `wallet_ffi`) and integration tests (real `wallet_ffi`) instead.
 
   Because the module is built from the commit under test and then loaded and
-  called through a real `logoscore` daemon, a green run is real evidence that
+  called through a real `logosctl` daemon, a green run is real evidence that
   this change keeps the execution-zone module loadable and callable.
 
-what_you_build: "This `logos_execution_zone` module, packaged as `.lgx`, installed with `lgpm`, and called through a `logoscore` daemon."
+what_you_build: "This `logos_execution_zone` module, packaged as `.lgx`, installed into a `logosctl` session, and called through its daemon."
 
 what_you_learn:
-  - How to build the `logoscore` runtime and the `lgpm` package manager from their flakes
+  - How to build the `logosctl` runtime from its flake
   - How a module's flake exposes a ready-to-install `.lgx` via its `#lgx` output
-  - How to install an `.lgx` into a modules directory with `lgpm`
-  - How to start the `logoscore` daemon, load a module, introspect it, and call its methods
+  - How to install an `.lgx` into a `logosctl` session
+  - How to start the `logosctl` daemon, load a module, introspect it, and call its methods
   - How to shut the daemon down and confirm it has exited
 
 prerequisites:
@@ -58,41 +57,29 @@ prerequisites:
   - "**A Linux or macOS machine.**"
 
 sections:
-  - title: "Build logoscore"
+  - title: "Build logosctl"
     step: true
     text: |
-      Build the `logoscore` CLI from its published flake. The result is symlinked to
-      `./logos/`. `logoscore` is the headless frontend for `logos-liblogos`, so this
+      Build the `logosctl` CLI from its published flake. The result is symlinked to
+      `./logos/`. `logosctl` is the headless frontend for `logos-liblogos`, so this
       one build brings in the whole module-runtime stack the daemon needs.
     steps:
       - title: "Build the CLI"
-        run: "nix build 'github:logos-co/logos-logoscore-cli' --out-link ./logos"
+        run: "nix build 'github:logos-co/logos-logoscore-cli#ctl' --out-link ./logos"
         code_block: |
-          nix build 'github:logos-co/logos-logoscore-cli' --out-link ./logos
-        check_file: "logos/bin/logoscore"
+          nix build 'github:logos-co/logos-logoscore-cli#ctl' --out-link ./logos
+        check_file: "logos/bin/logosctl"
         post_text: |
-          The build produces `logos/bin/logoscore` plus bundled runtime libraries
+          The build produces `logos/bin/logosctl` plus bundled runtime libraries
           and a `logos/modules/` directory containing the built-in
           `capability_module` (required for the auth handshake when loading
           modules).
-
-  - title: "Build the lgpm package manager"
-    step: true
-    text: |
-      `lgpm` installs `.lgx` packages into a modules directory and scans what is
-      installed. Build it from the `logos-package-manager` flake and link it as
-      `./lgpm`.
-    steps:
-      - title: "Build lgpm"
-        run: "nix build 'github:logos-co/logos-package-manager#cli' -o lgpm"
-        check_file: "lgpm/bin/lgpm"
-        post_text: "The executable is at `./lgpm/bin/lgpm`."
 
   - title: "Build and install this execution-zone module"
     step: true
     text: |
       Build **this** execution-zone module's `.lgx` straight from its flake's
-      `#lgx` output and install it into a local `./modules` directory with `lgpm`.
+      `#lgx` output, start a daemon, and install the package into its session.
       Every module built with
       [`logos-module-builder`](https://github.com/logos-co/logos-module-builder)
       exposes a ready-to-install `#lgx`.
@@ -115,90 +102,81 @@ sections:
         extra_run:
           run: "ls lez-lgx/*.lgx"
 
-      - title: "Seed the modules directory with the bundled capability module"
-        text: |
-          `logos_execution_zone` is loaded through the host's capability layer, so
-          the modules directory also needs the `capability_module` that ships with
-          `logoscore`. Copy it across first.
-        run: |
-          mkdir -p modules
-          cp -RL ./logos/modules/. ./modules/
-        check_file: "modules/capability_module/manifest.json"
-
-      - title: "Install the .lgx with lgpm"
-        text: |
-          Install the freshly-built package into `./modules`. `logos_execution_zone`
-          is a `core` module, so it goes to `--modules-dir`. The package is unsigned
-          (a local dev build), so we pass `--allow-unsigned`.
-        run: "./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file lez-lgx/*.lgx"
-        expect_contains:
-          - "Installed to:"
-
-      - title: "Confirm the install"
-        text: "Scan the directory and confirm the module landed:"
-        run: "./lgpm/bin/lgpm --modules-dir ./modules list"
-        expect_contains:
-          - "lez_core"
-        check_file: "modules/lez_core/manifest.json"
-
-  - title: "Run the daemon and call the module"
-    step: true
-    text: |
-      Start `logoscore` in daemon mode pointed at `./modules`, then use the client
-      subcommands to load `logos_execution_zone`, introspect it, and call several
-      of its methods. Daemon output is captured in `logs.txt`.
-    steps:
       - title: "Start the daemon"
         text: |
-          Start logoscore in daemon mode in the background, capturing output to
-          `logs.txt`:
-        run: "sh -c './logos/bin/logoscore -D -m ./modules > logs.txt 2>&1 &'"
-        code_block: "logoscore -D -m ./modules > logs.txt &"
-        post_text: |
-          The `-D` flag starts the daemon. The client subcommands below connect to
-          this running process via the config written under `~/.logoscore/`.
+          Start a `logosctl` daemon. Its session directory, `./session`, holds the
+          daemon's config, its installed modules and their data. `--detach`
+          returns once the daemon accepts commands.
+        # The bundled package downloader starts a storage node in $HOME; keep it
+        # out of the real one.
+        run: "mkdir -p home && HOME=\"$PWD/home\" ./logos/bin/logosctl --config-dir ./session daemon start --detach"
+        code_block: "logosctl daemon start --detach"
+        expect_contains:
+          - "Daemon started"
 
-      - run: "sleep 3"
+      - title: "Install the .lgx"
+        text: |
+          A path ending in `.lgx` installs from disk, with no catalog involved. A
+          local build is unsigned, which the session's default policy accepts with
+          a warning. `-y` confirms, since there is no terminal to ask on.
+        run: "./logos/bin/logosctl --config-dir ./session install lez-lgx/*.lgx -y"
+        code_block: "logosctl install lez-lgx/*.lgx -y"
+        expect_contains:
+          - '"installed":["lez_core"]'
 
+      - title: "Confirm the install"
+        text: "List the session's packages and confirm the module landed:"
+        run: "./logos/bin/logosctl --config-dir ./session package ls"
+        code_block: "logosctl package ls"
+        expect_contains:
+          - "lez_core"
+        check_file: "session/modules/lez_core/manifest.json"
+
+  - title: "Call the module"
+    step: true
+    text: |
+      Load `logos_execution_zone`, introspect it, and call several of its methods
+      with the client subcommands. The daemon logs to `session/logs/daemon.log`.
+    steps:
       - title: "Inspect the startup log"
         text: "Review the daemon's startup output:"
-        run: "cat logs.txt"
+        run: "cat session/logs/daemon.log"
 
       - title: "Check daemon status"
         text: "Verify the daemon is running:"
-        run: "./logos/bin/logoscore status"
-        code_block: "logoscore status"
+        run: "./logos/bin/logosctl --config-dir ./session daemon status"
+        code_block: "logosctl daemon status"
 
       - title: "List discovered modules"
         text: "`lez_core` should be visible in the scan directory:"
-        run: "./logos/bin/logoscore list-modules"
-        code_block: "logoscore list-modules"
+        run: "./logos/bin/logosctl --config-dir ./session module ls"
+        code_block: "logosctl module ls"
         expect_contains:
           - "lez_core"
 
       - title: "Load the module"
         text: "Load `lez_core` into the running daemon:"
-        run: "./logos/bin/logoscore load-module lez_core"
-        code_block: "logoscore load-module lez_core"
+        run: "./logos/bin/logosctl --config-dir ./session module load lez_core"
+        code_block: "logosctl module load lez_core"
         expect_contains:
           - "lez_core"
 
       - title: "Confirm the module is loaded"
         text: |
-          Re-run `status`; the module that was `not_loaded` before now reports
+          Re-run `daemon status`; the module that was `not_loaded` before now reports
           `loaded`:
-        run: "./logos/bin/logoscore status"
-        code_block: "logoscore status"
+        run: "./logos/bin/logosctl --config-dir ./session daemon status"
+        code_block: "logosctl daemon status"
         expect_contains:
           - "lez_core"
           - '"status":"loaded"'
 
-      - title: "Introspect the module with module-info"
+      - title: "Introspect the module with module show"
         text: |
-          `module-info` lists the methods the module exposes — the same methods you
+          `module show` lists the methods the module exposes — the same methods you
           can `call`:
-        run: "./logos/bin/logoscore module-info lez_core"
-        code_block: "logoscore module-info lez_core"
+        run: "./logos/bin/logosctl --config-dir ./session module show lez_core"
+        code_block: "logosctl module show lez_core"
         expect_contains:
           - "lez_core"
 
@@ -206,8 +184,8 @@ sections:
         text: |
           `name` returns the module's own identifier — the simplest possible
           round-trip through the loaded plugin over liblogos' IPC:
-        run: "./logos/bin/logoscore call lez_core name"
-        code_block: "logoscore call lez_core name"
+        run: "./logos/bin/logosctl --config-dir ./session call lez_core name"
+        code_block: "logosctl call lez_core name"
         expect_contains:
           - '"result":"lez_core"'
 
@@ -215,8 +193,8 @@ sections:
         text: |
           `version` returns the module's semantic version (`0.5.1`), matching
           `metadata.json`:
-        run: "./logos/bin/logoscore call lez_core version"
-        code_block: "logoscore call lez_core version"
+        run: "./logos/bin/logosctl --config-dir ./session call lez_core version"
+        code_block: "logosctl call lez_core version"
         expect_contains:
           - '"result":"0.5.1"'
 
@@ -226,8 +204,8 @@ sections:
           and returns its base58 form. This is a pure encoding helper in
           `wallet_ffi` — no open wallet and no network required, so it runs
           entirely offline:
-        run: "./logos/bin/logoscore call lez_core account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        code_block: "logoscore call lez_core account_id_to_base58 aaaaaaaa...aaaa  # 64 hex chars"
+        run: "./logos/bin/logosctl --config-dir ./session call lez_core account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        code_block: "logosctl call lez_core account_id_to_base58 aaaaaaaa...aaaa  # 64 hex chars"
         expect_contains:
           - '"result"'
 
@@ -238,14 +216,14 @@ sections:
           decoding the same id and recovering the input is a deterministic,
           end-to-end proof that the codec — and the IPC path to this module — work:
         run: |
-          ENC=$(./logos/bin/logoscore call lez_core account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+          ENC=$(./logos/bin/logosctl --config-dir ./session call lez_core account_id_to_base58 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
           B58=$(printf '%s' "$ENC" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
           echo "encoded: $B58"
-          ./logos/bin/logoscore call lez_core account_id_from_base58 "$B58"
+          ./logos/bin/logosctl --config-dir ./session call lez_core account_id_from_base58 "$B58"
         code_block: |
           # Encode, then decode the result back — the round-trip returns the input.
-          B58=$(logoscore call lez_core account_id_to_base58 aaaa...aaaa)
-          logoscore call lez_core account_id_from_base58 "$B58"
+          B58=$(logosctl call lez_core account_id_to_base58 aaaa...aaaa)
+          logosctl call lez_core account_id_from_base58 "$B58"
         expect_contains:
           - "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -253,25 +231,23 @@ sections:
         text: |
           Decoding obvious garbage fails cleanly: `account_id_from_base58` returns
           an empty result rather than crashing the module or the daemon:
-        run: "./logos/bin/logoscore call lez_core account_id_from_base58 '!!!not-base58!!!'"
-        code_block: "logoscore call lez_core account_id_from_base58 '!!!not-base58!!!'"
+        run: "./logos/bin/logosctl --config-dir ./session call lez_core account_id_from_base58 '!!!not-base58!!!'"
+        code_block: "logosctl call lez_core account_id_from_base58 '!!!not-base58!!!'"
         expect_contains:
           - '"result":""'
 
       - title: "Stop the daemon"
         text: "Shut the daemon down cleanly:"
-        run: "./logos/bin/logoscore stop"
-        code_block: "logoscore stop"
+        run: "./logos/bin/logosctl --config-dir ./session daemon stop"
+        code_block: "logosctl daemon stop"
         post_text: |
           The daemon removes its state file and exits.
-
-      - run: "sleep 2"
 
       - title: "Confirm the daemon has stopped"
         text: |
           With no daemon running, the client reports `not_running` and exits
           non-zero, so we add `|| true` to let the doc-test assert on the output:
-        run: "./logos/bin/logoscore status || true"
-        code_block: "logoscore status"
+        run: "./logos/bin/logosctl --config-dir ./session daemon status || true"
+        code_block: "logosctl daemon status"
         expect_contains:
           - '"status":"not_running"'
