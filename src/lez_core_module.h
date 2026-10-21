@@ -8,7 +8,7 @@
 #include <logos_module_context.h>
 
 extern "C" {
-#include <wallet_ffi.h>
+#include <core_ffi.h>
 }
 
 constexpr const char* LEZ_NO_WALLET_DIR = "-";
@@ -39,6 +39,11 @@ public:
     std::string name() const;
     std::string version() const;
     std::string wallet_dir();
+    std::string sequencer_dir();
+
+    int64_t start_sequencer(const std::string& config_path);
+    int64_t stop_sequencer();
+    void init_logger(const std::string& level)
 
     std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
     int64_t open(const std::string& config_path, const std::string& storage_path);
@@ -134,6 +139,7 @@ public:
 
 private:
     WalletHandle* walletHandle = nullptr;
+    SequencerServiceFfi* sequencerHandle = nullptr;
 };
 // clang-format on
 

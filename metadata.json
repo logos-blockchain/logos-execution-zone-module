@@ -1,7 +1,7 @@
 {
   "name": "lez_core",
   "display_name": "LEZ Core Module",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Logos Execution Zone Core Module for Logos Core",
   "author": "Logos Blockchain Team",
   "type": "core",
@@ -23,7 +23,7 @@
     },
     "external_libraries": [
       {
-        "name": "wallet_ffi"
+        "name": "core_ffi"
       }
     ],
     "cmake": {
