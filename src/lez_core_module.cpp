@@ -694,12 +694,38 @@ std::string LEZCoreModule::version() const {
     return "0.5.2";
 }
 
-// === Wallet Location ===
+// === Persistent locations ===
 
 std::string LEZCoreModule::wallet_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
         return LEZ_NO_WALLET_DIR;
     return instancePersistencePath();
+
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(instancePersistencePath()) / "wallet";
+
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (ec)
+        return LEZ_NO_WALLET_DIR;
+
+    return dir.string();
+}
+
+std::string LEZCoreModule::sequencer_dir() {
+    if (!isContextReady() || instancePersistencePath().empty())
+        return LEZ_NO_WALLET_DIR;
+    return instancePersistencePath();
+
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(instancePersistencePath()) / "sequencer";
+
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (ec)
+        return LEZ_NO_WALLET_DIR;
+
+    return dir.string();
 }
 
 // === Account Management ===
@@ -1346,18 +1372,64 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
 // === Wallet Lifecycle ===
 
+int64_t LEZCoreModule::start_sequencer(
+    const std::string& config_path
+) {
+    if (sequencerHandle) {
+        fprintf(stderr, "start_sequencer: sequencer is already started\n");
+        return {};
+    }
+
+    InitializedSequencerServiceFFIResult start_result =
+        sequencer_ffi_start_sequencer(
+            // Null pointer to produce new runtime.
+            nullptr,
+            config_path.c_str()
+        );
+    if (!start_result.value) {
+        fprintf(stderr, "start_sequencer: sequencer_ffi_start_sequencer returned null\n");
+        return {};
+    }
+
+    sequencerHandle = start_result.value;
+
+    return SUCCESS;
+}
+
+int64_t LEZCoreModule::stop_sequencer() {
+    if (!sequencerHandle) {
+        fprintf(stderr, "stop_sequencer: attempting to stop null pointer\n");
+        return INTERNAL_ERROR;
+    }
+
+    FfiOperationError stop_result = sequencer_ffi_stop_sequencer(sequencerHandle);
+
+    return stop_result;
+}
+
+void LEZCoreModule::init_logger() {
+    std::string log_level = "info";
+
+    sequencer_ffi_init_logger(log_level.c_str());
+}
+
 std::string LEZCoreModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
     const std::string& password
 ) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "create_new: sequencer is not started\n");
+        return {};
+    }
+
     if (walletHandle) {
         fprintf(stderr, "create_new: wallet is already open\n");
         return {};
     }
 
     FfiCreateWalletOutput create_output =
-        wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str());
+        wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str(), sequencerHandle);
     if (!create_output.wallet) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
         return {};
@@ -1385,12 +1457,17 @@ int64_t LEZCoreModule::open(
     const std::string& config_path,
     const std::string& storage_path
 ) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "open: sequencer is not started\n");
+        return INTERNAL_ERROR;
+    }
+
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
         return INTERNAL_ERROR;
     }
 
-    walletHandle = wallet_ffi_open(config_path.c_str(), storage_path.c_str());
+    walletHandle = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), sequencerHandle);
     if (!walletHandle) {
         fprintf(stderr, "open: wallet_ffi_open returned null\n");
         return INTERNAL_ERROR;
