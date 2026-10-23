@@ -12,7 +12,7 @@
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
     lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
     logos-execution-zone = {
-      url = "github:logos-blockchain/logos-execution-zone?ref=v0.3.1";
+      url = "github:logos-blockchain/logos-execution-zone?ref=Pravdyvy/sequencer-ffi-integration-nix-update";
       inputs.rust-overlay.follows = "lez-rust-overlay";
     };
   };
@@ -23,14 +23,14 @@
       configFile = ./metadata.json;
       flakeInputs = inputs;
       externalLibInputs = {
-        wallet_ffi = {
+        core_ffi = {
           input = inputs.logos-execution-zone;
-          packages.default = "wallet";
+          packages.default = "core";
         };
       };
       tests = {
         dir = ./tests;
-        mockCLibs = [ "wallet_ffi" ];
+        mockCLibs = [ "core_ffi" ];
       };
     };
 }
