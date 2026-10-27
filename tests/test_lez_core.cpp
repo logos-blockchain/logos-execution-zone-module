@@ -69,7 +69,7 @@ LOGOS_TEST(create_account_public_returns_hex_on_success) {
 
 LOGOS_TEST(create_account_public_returns_empty_on_error) {
     auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_create_account_public").returns(static_cast<int>(INTERNAL_ERROR));
+    t.mockCFunction("wallet_ffi_create_account_public").returns(static_cast<int>(FfiOperationError_InternalError));
     LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.create_account_public().empty());
@@ -105,7 +105,7 @@ LOGOS_TEST(list_accounts_maps_entries) {
 
 LOGOS_TEST(list_accounts_empty_on_error) {
     auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_list_accounts").returns(static_cast<int>(INTERNAL_ERROR));
+    t.mockCFunction("wallet_ffi_list_accounts").returns(static_cast<int>(FfiOperationError_InternalError));
     LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(static_cast<int>(module.list_accounts().size()), 0);
@@ -211,7 +211,7 @@ LOGOS_TEST(account_id_from_base58_returns_hex) {
 
 LOGOS_TEST(account_id_from_base58_error_returns_empty) {
     auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_account_id_from_base58").returns(static_cast<int>(INTERNAL_ERROR));
+    t.mockCFunction("wallet_ffi_account_id_from_base58").returns(static_cast<int>(FfiOperationError_InternalError));
     LEZCoreModule module;
 
     LOGOS_ASSERT_TRUE(module.account_id_from_base58("anything").empty());
@@ -240,7 +240,7 @@ LOGOS_TEST(get_last_synced_block_returns_value) {
 
 LOGOS_TEST(get_last_synced_block_error_returns_zero) {
     auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_get_last_synced_block").returns(static_cast<int>(INTERNAL_ERROR));
+    t.mockCFunction("wallet_ffi_get_last_synced_block").returns(static_cast<int>(FfiOperationError_InternalError));
     LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.get_last_synced_block(), static_cast<int64_t>(0));
@@ -290,7 +290,7 @@ LOGOS_TEST(transfer_public_invalid_amount_error_json) {
 
 LOGOS_TEST(transfer_public_ffi_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_transfer_public").returns(static_cast<int>(INTERNAL_ERROR));
+    t.mockCFunction("wallet_ffi_transfer_public").returns(static_cast<int>(FfiOperationError_InternalError));
     LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.transfer_public(VALID_ID, VALID_ID_2, VALID_U128));
@@ -795,7 +795,7 @@ LOGOS_TEST(bridge_withdraw_invalid_hex_error_json) {
 
 LOGOS_TEST(bridge_withdraw_ffi_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
-    t.mockCFunction("wallet_ffi_bridge_withdraw").returns(static_cast<int>(INTERNAL_ERROR));
+    t.mockCFunction("wallet_ffi_bridge_withdraw").returns(static_cast<int>(FfiOperationError_InternalError));
     LEZCoreModule module;
 
     const nlohmann::json obj = parseObject(module.bridge_withdraw(VALID_ID, VALID_ID_2, 100));

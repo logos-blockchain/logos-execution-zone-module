@@ -43,13 +43,13 @@ public:
 
     int64_t start_sequencer(const std::string& config_path);
     int64_t stop_sequencer();
-    void init_logger(const std::string& level)
+    void init_logger(const std::string& level);
 
     std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
-    int64_t open(const std::string& config_path, const std::string& storage_path);
+    int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& password);
     int64_t save();
 
-    int64_t restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth);
+    int64_t restore_storage(const std::string& mnemonic, uint64_t depth);
 
     // === Account Management ===
     std::string create_account_public();
@@ -139,7 +139,7 @@ public:
 
 private:
     WalletHandle* walletHandle = nullptr;
-    SequencerServiceFfi* sequencerHandle = nullptr;
+    SequencerServiceFFI* sequencerHandle = nullptr;
 };
 // clang-format on
 

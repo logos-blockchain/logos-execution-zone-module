@@ -316,11 +316,11 @@ namespace {
 
         const std::string kindStr = doc[JsonKeys::Kind].get<std::string>();
         if (kindStr == JsonKeys::KindDisclosed)
-            out->kind = FfiProgramKind::PROGRAM_DISCLOSED;
+            out->kind = FfiProgramKind::FfiProgramKind_ProgramDisclosed;
         else if (kindStr == JsonKeys::KindShadow)
-            out->kind = FfiProgramKind::PROGRAM_SHADOW;
+            out->kind = FfiProgramKind::FfiProgramKind_ProgramShadow;
         else if (kindStr == JsonKeys::KindUndisclosed)
-            out->kind = FfiProgramKind::PROGRAM_UNDISCLOSED;
+            out->kind = FfiProgramKind::FfiProgramKind_ProgramUndisclosed;
         else
             return false;
 
@@ -332,11 +332,11 @@ namespace {
             out->has_account_id = true;
         }
 
-        if (out->kind == FfiProgramKind::PROGRAM_SHADOW)
+        if (out->kind == FfiProgramKind::FfiProgramKind_ProgramShadow)
             return true;
         if (!out->has_account_id)
             return false;
-        if (out->kind == FfiProgramKind::PROGRAM_DISCLOSED)
+        if (out->kind == FfiProgramKind::FfiProgramKind_ProgramDisclosed)
             return true;
 
         if (!doc.contains(JsonKeys::ProgramHeader) || !doc[JsonKeys::ProgramHeader].is_object())
@@ -465,8 +465,8 @@ namespace {
                 return false;
             }
             FfiAccountIdentity identity{};
-            const WalletFfiError ffi_error = wallet_ffi_resolve_private_account(wallet_handle, id, &identity);
-            if (ffi_error != SUCCESS) {
+            const FfiOperationError ffi_error = wallet_ffi_resolve_private_account(wallet_handle, id, &identity);
+            if (ffi_error != FfiOperationError_Success) {
                 error = "wallet_ffi_resolve_private_account failed for account " + std::to_string(i) +
                         ": wallet FFI error " + std::to_string(ffi_error);
                 return false;
@@ -496,7 +496,7 @@ namespace {
 
         if (kind == JsonKeys::KindPrivateForeign) {
             FfiAccountIdentity identity{};
-            identity.kind = FfiAccountIdentityKind::PRIVATE_FOREIGN;
+            identity.kind = FfiAccountIdentityKind::FfiAccountIdentityKind_PrivateForeign;
             if (!doc.contains(JsonKeys::NullifierPublicKey) || !doc[JsonKeys::NullifierPublicKey].is_string() ||
                 !hexToBytes32(doc[JsonKeys::NullifierPublicKey].get<std::string>(), &identity.nullifier_public_key)) {
                 error = "private_foreign needs a 32-byte \"nullifier_public_key\"";
@@ -532,7 +532,7 @@ namespace {
             return false;
         }
         FfiAccountIdentity identity{};
-        WalletFfiError ffi_error = SUCCESS;
+        FfiOperationError ffi_error = FfiOperationError_Success;
         if (kind == JsonKeys::KindPrivateOwned) {
             ffi_error = wallet_ffi_resolve_private_account(wallet_handle, id, &identity);
         } else if (kind == JsonKeys::KindPublic || kind == JsonKeys::KindPublicNoSign) {
@@ -541,7 +541,7 @@ namespace {
             error = "unknown kind \"" + kind + "\"";
             return false;
         }
-        if (ffi_error != SUCCESS) {
+        if (ffi_error != FfiOperationError_Success) {
             error = "resolving " + kind + " failed: wallet FFI error " + std::to_string(ffi_error);
             return false;
         }
@@ -574,7 +574,7 @@ namespace {
             return transferResultToJson(nullptr, std::string(method) + ": invalid program_kind_json");
         }
         // Native execution supplies no bytecode, so it can only be dispatched at a known address.
-        if (program_elf.empty() && root.kind != FfiProgramKind::PROGRAM_DISCLOSED) {
+        if (program_elf.empty() && root.kind != FfiProgramKind::FfiProgramKind_ProgramDisclosed) {
             fprintf(stderr, "%s: an empty program_elf requires a disclosed kind\n", method);
             return transferResultToJson(
                 nullptr, std::string(method) + ": an empty program_elf requires a disclosed kind"
@@ -596,7 +596,7 @@ namespace {
                     nullptr, std::string(method) + ": invalid dependency_kinds_json[" + std::to_string(i) + "]"
                 );
             }
-            if (dependency_kinds[i].kind != FfiProgramKind::PROGRAM_SHADOW &&
+            if (dependency_kinds[i].kind != FfiProgramKind::FfiProgramKind_ProgramShadow &&
                 memcmp(dependency_kinds[i].account_id.data, self_account_id.data, 32) == 0) {
                 fprintf(stderr, "%s: dependency %zu has the root's account_id\n", method, i);
                 return transferResultToJson(
@@ -623,7 +623,7 @@ namespace {
             programs.push_back(toFfiDependency(program_elf, root, self_account_id));
         for (size_t i = 0; i < program_dependencies.size(); ++i) {
             const ParsedProgramKind& parsed = dependency_kinds[i];
-            const bool is_shadow = parsed.kind == FfiProgramKind::PROGRAM_SHADOW;
+            const bool is_shadow = parsed.kind == FfiProgramKind::FfiProgramKind_ProgramShadow;
             programs.push_back(
                 toFfiDependency(program_dependencies[i], parsed, is_shadow ? never_self : parsed.account_id)
             );
@@ -656,7 +656,7 @@ namespace {
 
         FfiTransactionResult result{};
 
-        const WalletFfiError error = wallet_ffi_send_generic_private_transaction(
+        const FfiOperationError error = wallet_ffi_send_generic_private_transaction(
             wallet_handle,
             mentions.data(),
             static_cast<uintptr_t>(mentions.size()),
@@ -666,7 +666,7 @@ namespace {
             &result
         );
 
-        if (error != SUCCESS) {
+        if (error != FfiOperationError_Success) {
             fprintf(stderr, "%s: wallet FFI error %d\n", method, error);
             return transferResultToJson(nullptr, std::string(method) + ": wallet FFI error " + std::to_string(error));
         }
@@ -698,7 +698,7 @@ std::string LEZCoreModule::version() const {
 
 std::string LEZCoreModule::wallet_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
-        return LEZ_NO_WALLET_DIR;
+        return LEZ_NO_DIR;
     return instancePersistencePath();
 
     namespace fs = std::filesystem;
@@ -707,14 +707,14 @@ std::string LEZCoreModule::wallet_dir() {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (ec)
-        return LEZ_NO_WALLET_DIR;
+        return LEZ_NO_DIR;
 
     return dir.string();
 }
 
 std::string LEZCoreModule::sequencer_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
-        return LEZ_NO_WALLET_DIR;
+        return LEZ_NO_DIR;
     return instancePersistencePath();
 
     namespace fs = std::filesystem;
@@ -723,7 +723,7 @@ std::string LEZCoreModule::sequencer_dir() {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (ec)
-        return LEZ_NO_WALLET_DIR;
+        return LEZ_NO_DIR;
 
     return dir.string();
 }
@@ -732,8 +732,8 @@ std::string LEZCoreModule::sequencer_dir() {
 
 std::string LEZCoreModule::create_account_public() {
     FfiBytes32 id{};
-    const WalletFfiError error = wallet_ffi_create_account_public(walletHandle, &id);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_create_account_public(walletHandle, &id);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "create_account_public: wallet FFI error %d\n", error);
         return {};
     }
@@ -742,8 +742,8 @@ std::string LEZCoreModule::create_account_public() {
 
 std::string LEZCoreModule::create_account_private() {
     FfiBytes32 id{};
-    const WalletFfiError error = wallet_ffi_create_account_private(walletHandle, &id);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_create_account_private(walletHandle, &id);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "create_account_private: wallet FFI error %d\n", error);
         return {};
     }
@@ -753,8 +753,8 @@ std::string LEZCoreModule::create_account_private() {
 LogosList LEZCoreModule::list_accounts() {
     LogosList result = nlohmann::json::array();
     FfiAccountList list{};
-    const WalletFfiError error = wallet_ffi_list_accounts(walletHandle, &list);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_list_accounts(walletHandle, &list);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "list_accounts: wallet FFI error %d\n", error);
         return result;
     }
@@ -775,8 +775,8 @@ std::string LEZCoreModule::get_balance(const std::string& account_id_hex, const 
     }
 
     uint8_t balance[16] = {0};
-    const WalletFfiError error = wallet_ffi_get_balance(walletHandle, &id, is_public, &balance);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_balance(walletHandle, &id, is_public, &balance);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_balance: wallet FFI error %d\n", error);
         return {};
     }
@@ -791,8 +791,8 @@ std::string LEZCoreModule::get_account_public(const std::string& account_id_hex)
         return {};
     }
     FfiAccount account{};
-    const WalletFfiError error = wallet_ffi_get_account_public(walletHandle, &id, &account);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_account_public(walletHandle, &id, &account);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_account_public: wallet FFI error %d\n", error);
         return {};
     }
@@ -808,8 +808,8 @@ std::string LEZCoreModule::get_account_private(const std::string& account_id_hex
         return {};
     }
     FfiAccount account{};
-    const WalletFfiError error = wallet_ffi_get_account_private(walletHandle, &id, &account);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_account_private(walletHandle, &id, &account);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_account_private: wallet FFI error %d\n", error);
         return {};
     }
@@ -825,8 +825,8 @@ std::string LEZCoreModule::get_public_account_key(const std::string& account_id_
         return {};
     }
     FfiPublicAccountKey key{};
-    const WalletFfiError error = wallet_ffi_get_public_account_key(walletHandle, &id, &key);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_public_account_key(walletHandle, &id, &key);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_public_account_key: wallet FFI error %d\n", error);
         return {};
     }
@@ -840,8 +840,8 @@ std::string LEZCoreModule::get_private_account_keys(const std::string& account_i
         return {};
     }
     FfiPrivateAccountKeys keys{};
-    const WalletFfiError error = wallet_ffi_get_private_account_keys(walletHandle, &id, &keys);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_private_account_keys(walletHandle, &id, &keys);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_private_account_keys: wallet FFI error %d\n", error);
         return {};
     }
@@ -871,14 +871,14 @@ std::string LEZCoreModule::account_id_to_base58(const std::string& account_id_he
     }
 
     std::string value(str);
-    wallet_ffi_free_string(str);
+    primitives_ffi_free_cstring(str);
     return value;
 }
 
 std::string LEZCoreModule::account_id_from_base58(const std::string& base58_str) {
     FfiBytes32 id{};
-    const WalletFfiError error = wallet_ffi_account_id_from_base58(base58_str.c_str(), &id);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_account_id_from_base58(base58_str.c_str(), &id);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "account_id_from_base58: wallet FFI error %d\n", error);
         return {};
     }
@@ -893,8 +893,8 @@ int64_t LEZCoreModule::sync_to_block(const int64_t block_id) {
 
 int64_t LEZCoreModule::get_last_synced_block() {
     uint64_t block_id = 0;
-    const WalletFfiError error = wallet_ffi_get_last_synced_block(walletHandle, &block_id);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_last_synced_block(walletHandle, &block_id);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_last_synced_block: wallet FFI error %d\n", error);
         return 0;
     }
@@ -903,8 +903,8 @@ int64_t LEZCoreModule::get_last_synced_block() {
 
 int64_t LEZCoreModule::get_current_block_height() {
     uint64_t block_height = 0;
-    const WalletFfiError error = wallet_ffi_get_current_block_height(walletHandle, &block_height);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_get_current_block_height(walletHandle, &block_height);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "get_current_block_height: wallet FFI error %d\n", error);
         return 0;
     }
@@ -931,8 +931,8 @@ std::string LEZCoreModule::transfer_public(
     }
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_public(walletHandle, &fromId, &toId, &amount, &result);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_transfer_public(walletHandle, &fromId, &toId, &amount, &result);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_public: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_public: wallet FFI error " + std::to_string(error));
     }
@@ -975,10 +975,10 @@ std::string LEZCoreModule::transfer_shielded(
     const char* key_path = nullptr;
 
     FfiTransferResult result{};
-    const WalletFfiError error =
+    const FfiOperationError error =
         wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, key_path, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
-    if (error != SUCCESS) {
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_shielded: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded: wallet FFI error " + std::to_string(error));
     }
@@ -1007,8 +1007,8 @@ std::string LEZCoreModule::transfer_deshielded(
     }
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_deshielded(walletHandle, &fromId, &toId, &amount, &result);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_transfer_deshielded(walletHandle, &fromId, &toId, &amount, &result);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_deshielded: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_deshielded: wallet FFI error " + std::to_string(error));
     }
@@ -1047,10 +1047,10 @@ std::string LEZCoreModule::transfer_private(
     if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
         toIdentifier = randomFfiIdentifier();
     FfiTransferResult result{};
-    const WalletFfiError error =
+    const FfiOperationError error =
         wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, &result);
     free(const_cast<uint8_t*>(toKeys.viewing_public_key));
-    if (error != SUCCESS) {
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_private: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_private: wallet FFI error " + std::to_string(error));
     }
@@ -1082,9 +1082,9 @@ std::string LEZCoreModule::transfer_shielded_owned(
     const char* key_path = nullptr;
 
     FfiTransferResult result{};
-    const WalletFfiError error =
+    const FfiOperationError error =
         wallet_ffi_transfer_shielded_owned(walletHandle, &fromId, &toId, &amount, key_path, &result);
-    if (error != SUCCESS) {
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_shielded_owned: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded_owned: wallet FFI error " + std::to_string(error));
     }
@@ -1113,8 +1113,8 @@ std::string LEZCoreModule::transfer_private_owned(
     }
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_transfer_private_owned(walletHandle, &fromId, &toId, &amount, &result);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_transfer_private_owned(walletHandle, &fromId, &toId, &amount, &result);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_private_owned: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_private_owned: wallet FFI error " + std::to_string(error));
     }
@@ -1137,8 +1137,8 @@ std::string LEZCoreModule::bridge_withdraw(
     }
 
     FfiTransferResult result{};
-    const WalletFfiError error = wallet_ffi_bridge_withdraw(walletHandle, &fromId, amount, &bedrockAccountPk, &result);
-    if (error != SUCCESS) {
+    const FfiOperationError error = wallet_ffi_bridge_withdraw(walletHandle, &fromId, amount, &bedrockAccountPk, &result);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "bridge_withdraw: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "bridge_withdraw: wallet FFI error " + std::to_string(error));
     }
@@ -1198,8 +1198,8 @@ std::string LEZCoreModule::send_generic_public_transaction(
             );
         }
 
-        WalletFfiError error = wallet_ffi_resolve_public_account(id, signing_requirements[i], &acc_identity);
-        if (error != SUCCESS) {
+        FfiOperationError error = wallet_ffi_resolve_public_account(id, signing_requirements[i], &acc_identity);
+        if (error != FfiOperationError_Success) {
             fprintf(stderr, "wallet_ffi_resolve_public_account failed for index %d: wallet FFI error %d\n", i, error);
             free_identities();
             return transferResultToJson(
@@ -1221,7 +1221,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
 
     FfiTransactionResult result{};
 
-    const WalletFfiError error = wallet_ffi_send_generic_public_transaction(
+    const FfiOperationError error = wallet_ffi_send_generic_public_transaction(
         walletHandle,
         mentions.data(),
         static_cast<uintptr_t>(mentions.size()),
@@ -1234,7 +1234,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
 
     free_identities();
 
-    if (error != SUCCESS) {
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "send_generic_public_transaction: wallet FFI error %d\n", error);
         return transferResultToJson(
             nullptr, std::string("send_generic_public_transaction: wallet FFI error ") + std::to_string(error)
@@ -1328,7 +1328,7 @@ std::string LEZCoreModule::send_program_deployment_transaction(const std::string
     }
 
     FfiTransactionResult result{};
-    const WalletFfiError error = wallet_ffi_program_loader_deploy(
+    const FfiOperationError error = wallet_ffi_program_loader_deploy(
         walletHandle,
         &header,
         segments.data(),
@@ -1340,7 +1340,7 @@ std::string LEZCoreModule::send_program_deployment_transaction(const std::string
         &result
     );
 
-    if (error != SUCCESS) {
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "send_program_deployment_transaction: wallet FFI error %d\n", error);
         return transferResultToJson(
             nullptr, std::string("send_program_deployment_transaction: wallet FFI error ") + std::to_string(error)
@@ -1360,9 +1360,9 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
     bool is_found = false;
 
-    const WalletFfiError error = wallet_ffi_poll_transaction_status(walletHandle, tx_hash, &is_found);
+    const FfiOperationError error = wallet_ffi_poll_transaction_status(walletHandle, tx_hash, &is_found);
 
-    if (error != SUCCESS) {
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "poll_transaction_status: wallet FFI error %d\n", error);
         return false;
     }
@@ -1393,13 +1393,13 @@ int64_t LEZCoreModule::start_sequencer(
 
     sequencerHandle = start_result.value;
 
-    return SUCCESS;
+    return FfiOperationError_Success;
 }
 
 int64_t LEZCoreModule::stop_sequencer() {
     if (!sequencerHandle) {
         fprintf(stderr, "stop_sequencer: attempting to stop null pointer\n");
-        return INTERNAL_ERROR;
+        return FfiOperationError_InternalError;
     }
 
     FfiOperationError stop_result = sequencer_ffi_stop_sequencer(sequencerHandle);
@@ -1407,10 +1407,8 @@ int64_t LEZCoreModule::stop_sequencer() {
     return stop_result;
 }
 
-void LEZCoreModule::init_logger() {
-    std::string log_level = "info";
-
-    sequencer_ffi_init_logger(log_level.c_str());
+void LEZCoreModule::init_logger(const std::string& level) {
+    sequencer_ffi_init_logger(level.c_str());
 }
 
 std::string LEZCoreModule::create_new(
@@ -1438,42 +1436,43 @@ std::string LEZCoreModule::create_new(
     walletHandle = create_output.wallet;
     std::string mnemonic(create_output.mnemonic);
 
-    wallet_ffi_free_string(create_output.mnemonic);
+    primitives_ffi_free_cstring(create_output.mnemonic);
 
     return mnemonic;
 }
 
-int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, const std::string password, uint64_t depth) {
-    const WalletFfiError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), password.c_str(), static_cast<uint32_t>(depth));
-    if (error != SUCCESS) {
+int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, uint64_t depth) {
+    const FfiOperationError error = wallet_ffi_restore_data(walletHandle, mnemonic.c_str(), static_cast<uint32_t>(depth));
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "restore_storage: wallet FFI error %d\n", error);
         return error;
     }
 
-    return SUCCESS;
+    return FfiOperationError_Success;
 }
 
 int64_t LEZCoreModule::open(
     const std::string& config_path,
-    const std::string& storage_path
+    const std::string& storage_path,
+    const std::string& password
 ) {
     if (!sequencerHandle) {
         fprintf(stderr, "open: sequencer is not started\n");
-        return INTERNAL_ERROR;
+        return FfiOperationError_InternalError;
     }
 
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
-        return INTERNAL_ERROR;
+        return FfiOperationError_InternalError;
     }
 
-    walletHandle = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), sequencerHandle);
+    FfiOperationError error = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), sequencerHandle, password.c_str(), &walletHandle);
     if (!walletHandle) {
         fprintf(stderr, "open: wallet_ffi_open returned null\n");
-        return INTERNAL_ERROR;
+        return error;
     }
 
-    return SUCCESS;
+    return FfiOperationError_Success;
 }
 
 int64_t LEZCoreModule::save() {
@@ -1490,7 +1489,7 @@ std::string LEZCoreModule::get_sequencer_addr() {
     }
 
     std::string value(addr);
-    wallet_ffi_free_string(addr);
+    primitives_ffi_free_cstring(addr);
     return value;
 }
 
@@ -1501,7 +1500,7 @@ bool LEZCoreModule::check_label_available(const std::string& label) {
 
     LabelAvailability label_check = wallet_ffi_check_label_available(walletHandle, label_c);
 
-    if (label_check.error != SUCCESS) {
+    if (label_check.error != FfiOperationError_Success) {
         fprintf(stderr, "check_label_available: wallet FFI error %d\n", label_check.error);
         return false;
     }
@@ -1515,17 +1514,17 @@ int64_t LEZCoreModule::add_label(const std::string& label, const std::string& ac
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
         fprintf(stderr, "wallet_ffi_add_label: invalid account_id_hex");
-        return WalletFfiError::INVALID_ACCOUNT_ID;
+        return FfiOperationError::FfiOperationError_InvalidAccountId;
     }
 
     FfiAccountIdWithPrivacy acc_id_with_privacy = {id, is_private};
 
-    WalletFfiError error = wallet_ffi_add_label(walletHandle, label_c, acc_id_with_privacy);
-    if (error != SUCCESS) {
+    FfiOperationError error = wallet_ffi_add_label(walletHandle, label_c, acc_id_with_privacy);
+    if (error != FfiOperationError_Success) {
         fprintf(stderr, "wallet_ffi_add_label failed : wallet FFI error %d\n", error);
     }
 
-    return SUCCESS;
+    return FfiOperationError_Success;
 }
 
 std::string LEZCoreModule::resolve_label(const std::string& label) {
@@ -1533,7 +1532,7 @@ std::string LEZCoreModule::resolve_label(const std::string& label) {
 
     AccountIdResolvedFromLabel acc_id_res = wallet_ffi_resolve_label(walletHandle, label_c);
 
-    if (acc_id_res.error != SUCCESS) {
+    if (acc_id_res.error != FfiOperationError_Success) {
         fprintf(stderr, "wallet_ffi_resolve_label failed : wallet FFI error %d\n", acc_id_res.error);
         return {};
     }
@@ -1561,7 +1560,7 @@ std::vector<std::string> LEZCoreModule::get_all_labels_for_account(const std::st
 
     LabelList label_list = wallet_ffi_get_all_labels_for_account(walletHandle, acc_id_with_privacy);
 
-    if (label_list.error != SUCCESS) {
+    if (label_list.error != FfiOperationError_Success) {
         fprintf(stderr, "wallet_ffi_get_all_labels_for_account failed : wallet FFI error %d\n", label_list.error);
         return {};
     }
@@ -1573,9 +1572,9 @@ std::vector<std::string> LEZCoreModule::get_all_labels_for_account(const std::st
         result.emplace_back(label_list.labels_data[i]);
     }
 
-    WalletFfiError err = wallet_ffi_free_label_list(&label_list);
+    FfiOperationError err = wallet_ffi_free_label_list(&label_list);
 
-    if (err != SUCCESS) {
+    if (err != FfiOperationError_Success) {
         fprintf(stderr, "wallet_ffi_free_label_list failed : wallet FFI error %d\n", err);
         return {};
     }
