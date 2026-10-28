@@ -51,7 +51,7 @@ namespace {
         constexpr auto Success = "success";
         constexpr auto Error = "error";
         constexpr auto Nonce = "nonce";
-        constexpr auto Shards = "shards";
+        constexpr auto ActorStates = "actor_states";
         constexpr auto Program = "program";
         constexpr auto Data = "data";
         constexpr auto NullifierPublicKey = "nullifier_public_key";
@@ -179,16 +179,16 @@ namespace {
     std::string ffiAccountToJson(const FfiAccount& account) {
         nlohmann::json obj = nlohmann::json::object();
         obj[JsonKeys::Nonce] = bytesToHex(account.nonce.data, 16);
-        nlohmann::json shards = nlohmann::json::array();
-        for (uintptr_t i = 0; account.shards && i < account.shards_len; ++i) {
-            const FfiShard& shard = account.shards[i];
-            nlohmann::json shardObj = nlohmann::json::object();
-            shardObj[JsonKeys::Program] = bytes32ToHex(shard.program);
-            shardObj[JsonKeys::Data] =
-                (shard.data && shard.data_len > 0) ? bytesToHex(shard.data, shard.data_len) : std::string();
-            shards.push_back(shardObj);
+        nlohmann::json actor_states = nlohmann::json::array();
+        for (uintptr_t i = 0; account.actor_states && i < account.actor_states_len; ++i) {
+            const FfiActorState& actor_state = account.actor_states[i];
+            nlohmann::json actorStateObj = nlohmann::json::object();
+            actorStateObj[JsonKeys::Program] = bytes32ToHex(actor_state.program);
+            actorStateObj[JsonKeys::Data] =
+                (actor_state.data && actor_state.data_len > 0) ? bytesToHex(actor_state.data, actor_state.data_len) : std::string();
+            actor_states.push_back(actorStateObj);
         }
-        obj[JsonKeys::Shards] = shards;
+        obj[JsonKeys::ActorStates] = actor_states;
         return obj.dump();
     }
 
@@ -202,37 +202,12 @@ namespace {
     std::string ffiPrivateAccountKeysToJson(const FfiPrivateAccountKeys& keys) {
         nlohmann::json obj = nlohmann::json::object();
         obj[JsonKeys::NullifierPublicKey] = bytes32ToHex(keys.nullifier_public_key);
-        if (keys.viewing_public_key && keys.viewing_public_key_len > 0) {
-            obj[JsonKeys::ViewingPublicKey] = bytesToHex(keys.viewing_public_key, keys.viewing_public_key_len);
+        if (keys.viewing_public_key.entries && keys.viewing_public_key.len > 0) {
+            obj[JsonKeys::ViewingPublicKey] = bytesToHex(keys.viewing_public_key.entries, keys.viewing_public_key.len);
         } else {
             obj[JsonKeys::ViewingPublicKey] = "";
         }
         return obj.dump();
-    }
-
-    // Nothing in this codebase currently emits an "identifier" field in to_keys_json — NPK/VPK
-    // identify a key group, not one specific account in it, so get_private_account_keys never
-    // attaches one. Kept for forward compatibility (e.g. a hand-crafted or future payload that
-    // targets one specific account within a group) and to make the fallback below explicit.
-    bool jsonExtractIdentifier(const std::string& json, FfiIdentifier* out_identifier) {
-        nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
-        if (doc.is_discarded() || !doc.is_object())
-            return false;
-        if (!doc.contains(JsonKeys::Identifier) || !doc[JsonKeys::Identifier].is_string())
-            return false;
-        return hexToBytes32(doc[JsonKeys::Identifier].get<std::string>(), out_identifier);
-    }
-
-    // A foreign recipient's identifier isn't known to the sender; the recipient's wallet
-    // recovers it from the encrypted transfer payload the next time it runs sync-private.
-    FfiIdentifier randomFfiIdentifier() {
-        static std::mt19937_64 rng(std::random_device{}());
-        FfiIdentifier value{};
-        for (size_t i = 0; i < sizeof(value.data); i += 8) {
-            uint64_t chunk = rng();
-            memcpy(value.data + i, &chunk, sizeof(chunk));
-        }
-        return value;
     }
 
     bool jsonToFfiPrivateAccountKeys(const std::string& json, FfiPrivateAccountKeys* output_keys) {
@@ -246,8 +221,9 @@ namespace {
         if (!hexToBytes32(doc[JsonKeys::NullifierPublicKey].get<std::string>(), &output_keys->nullifier_public_key))
             return false;
 
-        output_keys->viewing_public_key = nullptr;
-        output_keys->viewing_public_key_len = 0;
+        output_keys->viewing_public_key.entries = nullptr;
+        output_keys->viewing_public_key.len = 0;
+        output_keys->viewing_public_key.capacity = 0;
 
         if (doc.contains(JsonKeys::ViewingPublicKey)) {
             if (!doc[JsonKeys::ViewingPublicKey].is_string())
@@ -262,8 +238,9 @@ namespace {
                 if (!data)
                     return false;
                 memcpy(data, buffer.data(), buffer.size());
-                output_keys->viewing_public_key = data;
-                output_keys->viewing_public_key_len = buffer.size();
+                output_keys->viewing_public_key.entries = data;
+                output_keys->viewing_public_key.len = buffer.size();
+                output_keys->viewing_public_key.capacity = buffer.size();
             }
         }
 
@@ -512,15 +489,6 @@ namespace {
                 error = "private_foreign needs a 1184-byte \"viewing_public_key\"";
                 return false;
             }
-            if (doc.contains(JsonKeys::Identifier)) {
-                if (!jsonExtractIdentifier(json, &identity.identifier)) {
-                    error = "private_foreign has an invalid \"identifier\"";
-                    return false;
-                }
-            } else {
-                // A new account under the recipient's keys, which its wallet finds on its next sync.
-                identity.identifier = randomFfiIdentifier();
-            }
             accounts.addForeign(identity, std::move(viewing_key));
             return true;
         }
@@ -554,7 +522,8 @@ namespace {
         WalletHandle* wallet_handle,
         const char* method,
         const AccountsResolver& resolve_accounts,
-        const std::vector<uint8_t>& instruction,
+        const uint64_t root_mention,
+        const std::vector<uint8_t>& message,
         const std::vector<uint8_t>& program_elf,
         const std::string& program_kind_json,
         const std::vector<std::vector<uint8_t>>& program_dependencies,
@@ -629,8 +598,7 @@ namespace {
             );
         }
 
-        FfiProgramWithDependencies program_with_dependencies{};
-        program_with_dependencies.self_account_id = self_account_id;
+        FfiProgramCatalog program_with_dependencies{};
         program_with_dependencies.programs = programs.data();
         program_with_dependencies.programs_size = static_cast<uintptr_t>(programs.size());
 
@@ -660,8 +628,9 @@ namespace {
             wallet_handle,
             mentions.data(),
             static_cast<uintptr_t>(mentions.size()),
-            instruction.data(),
-            static_cast<uintptr_t>(instruction.size()),
+            static_cast<uintptr_t>(root_mention),
+            message.data(),
+            static_cast<uintptr_t>(message.size()),
             &program_with_dependencies,
             &result
         );
@@ -698,7 +667,7 @@ std::string LEZCoreModule::version() const {
 
 std::string LEZCoreModule::wallet_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
-        return LEZ_NO_DIR;
+        return LEZ_NO_WALLET_DIR;
     return instancePersistencePath();
 
     namespace fs = std::filesystem;
@@ -707,14 +676,14 @@ std::string LEZCoreModule::wallet_dir() {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (ec)
-        return LEZ_NO_DIR;
+        return LEZ_NO_WALLET_DIR;
 
     return dir.string();
 }
 
 std::string LEZCoreModule::sequencer_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
-        return LEZ_NO_DIR;
+        return LEZ_NO_WALLET_DIR;
     return instancePersistencePath();
 
     namespace fs = std::filesystem;
@@ -723,7 +692,7 @@ std::string LEZCoreModule::sequencer_dir() {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (ec)
-        return LEZ_NO_DIR;
+        return LEZ_NO_WALLET_DIR;
 
     return dir.string();
 }
@@ -851,7 +820,7 @@ std::string LEZCoreModule::get_private_account_keys(const std::string& account_i
     // can't supply one either: for a regular owned account it returns AccountIdentity::PrivateOwned,
     // which carries no identifier and defaults to zero — not a real value.)
     std::string result = ffiPrivateAccountKeysToJson(keys);
-    wallet_ffi_free_private_account_keys(&keys);
+    primitives_ffi_free_private_account_keys(&keys);
     return result;
 }
 
@@ -961,23 +930,17 @@ std::string LEZCoreModule::transfer_shielded(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+        free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
         return transferResultToJson(nullptr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
-    // to_keys_json never carries an identifier in this codebase (NPK/VPK name a key group,
-    // not one account in it) — pick a random one, which the recipient's wallet will recover
-    // from the encrypted transfer payload on its next sync-private. See jsonExtractIdentifier.
-    FfiIdentifier toIdentifier{};
-    if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
-        toIdentifier = randomFfiIdentifier();
     // TODO: Add keycard support
     const char* key_path = nullptr;
 
     FfiTransferResult result{};
     const FfiOperationError error =
-        wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, key_path, &result);
-    free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+        wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &amount, key_path, &result);
+    free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
     if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_shielded: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded: wallet FFI error " + std::to_string(error));
@@ -1037,19 +1000,14 @@ std::string LEZCoreModule::transfer_private(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+        free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
         return transferResultToJson(nullptr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
-    // See transfer_shielded above: to_keys_json never carries an identifier, so always pick
-    // a random one for the recipient's wallet to recover via sync-private.
-    FfiIdentifier toIdentifier{};
-    if (!jsonExtractIdentifier(to_keys_json, &toIdentifier))
-        toIdentifier = randomFfiIdentifier();
     FfiTransferResult result{};
     const FfiOperationError error =
-        wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &toIdentifier, &amount, &result);
-    free(const_cast<uint8_t*>(toKeys.viewing_public_key));
+        wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &amount, &result);
+    free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
     if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_private: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_private: wallet FFI error " + std::to_string(error));
@@ -1149,9 +1107,9 @@ std::string LEZCoreModule::bridge_withdraw(
 
 std::string LEZCoreModule::send_generic_public_transaction(
     const std::vector<std::string>& account_ids,
+    const uint64_t root_mention,
     const std::vector<bool>& signing_requirements,
-    const std::vector<uint8_t>& instruction,
-    const std::string& program_id_hex,
+    const std::vector<uint8_t>& message,
     const std::string& payer_account_id_hex,
     const std::vector<std::string>& shard_program_account_ids_hex
 ) {
@@ -1170,12 +1128,6 @@ std::string LEZCoreModule::send_generic_public_transaction(
             return transferResultToJson(nullptr, "send_generic_public_transaction: invalid payer_account_id_hex");
         }
         payer_ptr = &payer;
-    }
-
-    FfiBytes32 program_account_id{};
-    if (!hexToBytes32(program_id_hex, &program_account_id)) {
-        fprintf(stderr, "send_generic_public_transaction: invalid program_id_hex\n");
-        return transferResultToJson(nullptr, std::string("send_generic_public_transaction: invalid program_id_hex"));
     }
 
     std::vector<FfiAccountIdentity> identities_resolved;
@@ -1212,7 +1164,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
     std::vector<FfiAccountMention> mentions;
     std::string mentions_error;
     if (!buildAccountMentions(
-            identities_resolved, shard_program_account_ids_hex, &program_account_id, mentions, mentions_error
+            identities_resolved, shard_program_account_ids_hex, &identities_resolved[root_mention].account_id, mentions, mentions_error
         )) {
         fprintf(stderr, "send_generic_public_transaction: %s\n", mentions_error.c_str());
         free_identities();
@@ -1225,9 +1177,9 @@ std::string LEZCoreModule::send_generic_public_transaction(
         walletHandle,
         mentions.data(),
         static_cast<uintptr_t>(mentions.size()),
-        instruction.data(),
-        static_cast<uintptr_t>(instruction.size()),
-        program_account_id,
+        static_cast<uintptr_t>(root_mention),
+        message.data(),
+        static_cast<uintptr_t>(message.size()),
         payer_ptr,
         &result
     );
@@ -1247,7 +1199,8 @@ std::string LEZCoreModule::send_generic_public_transaction(
 
 std::string LEZCoreModule::send_generic_private_transaction(
     const std::vector<std::string>& account_ids,
-    const std::vector<uint8_t>& instruction,
+    const uint64_t root_mention,
+    const std::vector<uint8_t>& message,
     const std::vector<uint8_t>& program_elf,
     const std::string& program_kind_json,
     const std::vector<std::vector<uint8_t>>& program_dependencies,
@@ -1260,7 +1213,8 @@ std::string LEZCoreModule::send_generic_private_transaction(
         [this, &account_ids](PrivateSendAccounts& accounts, std::string& error) {
             return resolveOwnedPrivateAccounts(walletHandle, account_ids, accounts, error);
         },
-        instruction,
+        root_mention,
+        message,
         program_elf,
         program_kind_json,
         program_dependencies,
@@ -1271,7 +1225,8 @@ std::string LEZCoreModule::send_generic_private_transaction(
 
 std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
     const std::vector<std::string>& accounts_json,
-    const std::vector<uint8_t>& instruction,
+    const uint64_t root_mention,
+    const std::vector<uint8_t>& message,
     const std::vector<uint8_t>& program_elf,
     const std::string& program_kind_json,
     const std::vector<std::vector<uint8_t>>& program_dependencies,
@@ -1291,7 +1246,8 @@ std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
             }
             return true;
         },
-        instruction,
+        root_mention,
+        message,
         program_elf,
         program_kind_json,
         program_dependencies,
