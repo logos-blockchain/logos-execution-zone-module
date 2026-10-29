@@ -9,7 +9,7 @@
 #include <vector>
 
 extern "C" {
-#include <wallet_ffi.h>
+#include <core_ffi.h>
 }
 
 namespace MockWalletFfiCapture {
