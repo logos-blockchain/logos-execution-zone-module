@@ -12,7 +12,7 @@
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
     lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
     logos-execution-zone = {
-      url = "github:logos-blockchain/logos-execution-zone?ref=Pravdyvy/sequencer-ffi-integration-nix-update";
+      url = "github:logos-blockchain/logos-execution-zone?ref=dev";
       inputs.rust-overlay.follows = "lez-rust-overlay";
     };
   };

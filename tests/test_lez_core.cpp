@@ -1,9 +1,9 @@
 // Unit tests for LEZCoreModule.
-// All wallet_ffi C functions are mocked at link time via mock_wallet_ffi.cpp.
+// All core_ffi C functions are mocked at link time via mock_core_ffi.cpp.
 
 #include <logos_test.h>
 #include "lez_core_module.h"
-#include "mocks/mock_wallet_ffi_capture.h"
+#include "mocks/mock_core_ffi_capture.h"
 
 #include <algorithm>
 #include <cstring>

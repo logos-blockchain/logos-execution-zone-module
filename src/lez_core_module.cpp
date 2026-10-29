@@ -56,7 +56,6 @@ namespace {
         constexpr auto Data = "data";
         constexpr auto NullifierPublicKey = "nullifier_public_key";
         constexpr auto ViewingPublicKey = "viewing_public_key";
-        constexpr auto Identifier = "identifier";
         constexpr auto AccountId = "account_id";
         constexpr auto IsPublic = "is_public";
         constexpr auto Secrets = "secrets";
@@ -175,7 +174,7 @@ namespace {
         return obj.dump();
     }
 
-    // Builds JSON { nonce, shards: [{ program, data }] }.
+    // Builds JSON { nonce, actor_states: [{ program, data }] }.
     std::string ffiAccountToJson(const FfiAccount& account) {
         nlohmann::json obj = nlohmann::json::object();
         obj[JsonKeys::Nonce] = bytesToHex(account.nonce.data, 16);
@@ -211,40 +210,41 @@ namespace {
     }
 
     bool jsonToFfiPrivateAccountKeys(const std::string& json, FfiPrivateAccountKeys* output_keys) {
+        if (!output_keys)
+            return false;
+
         nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
         if (doc.is_discarded() || !doc.is_object())
             return false;
 
         // Nullifier public key is mandatory: a missing/wrong-typed value must not fall back to zero.
-        if (!doc.contains(JsonKeys::NullifierPublicKey) || !doc[JsonKeys::NullifierPublicKey].is_string())
+        const auto npkIt = doc.find(JsonKeys::NullifierPublicKey);
+        if (npkIt == doc.end() || !npkIt->is_string())
             return false;
-        if (!hexToBytes32(doc[JsonKeys::NullifierPublicKey].get<std::string>(), &output_keys->nullifier_public_key))
+
+        FfiBytes32 nullifierPublicKey{};
+        if (!hexToBytes32(npkIt->get<std::string>(), &nullifierPublicKey))
             return false;
 
-        output_keys->viewing_public_key.entries = nullptr;
-        output_keys->viewing_public_key.len = 0;
-        output_keys->viewing_public_key.capacity = 0;
-
-        if (doc.contains(JsonKeys::ViewingPublicKey)) {
-            if (!doc[JsonKeys::ViewingPublicKey].is_string())
+        // Viewing public key is optional: absent means empty (nullptr, 0).
+        std::vector<uint8_t> viewingPublicKey;
+        const auto vpkIt = doc.find(JsonKeys::ViewingPublicKey);
+        if (vpkIt != doc.end()) {
+            if (!vpkIt->is_string())
                 return false;
-
-            std::vector<uint8_t> buffer;
-            if (!hexToBytes(doc[JsonKeys::ViewingPublicKey].get<std::string>(), buffer))
+            if (!hexToBytes(vpkIt->get<std::string>(), viewingPublicKey))
                 return false;
-
-            if (!buffer.empty()) {
-                auto* data = static_cast<uint8_t*>(malloc(buffer.size()));
-                if (!data)
-                    return false;
-                memcpy(data, buffer.data(), buffer.size());
-                output_keys->viewing_public_key.entries = data;
-                output_keys->viewing_public_key.len = buffer.size();
-                output_keys->viewing_public_key.capacity = buffer.size();
-            }
         }
 
-        return true;
+        const uint8_t* vpkData = viewingPublicKey.empty() ? nullptr : viewingPublicKey.data();
+
+        const FfiOperationError err = wallet_ffi_make_private_account_keys_from_raw(
+            nullifierPublicKey,
+            vpkData,
+            viewingPublicKey.size(),
+            output_keys);
+
+        return err == FfiOperationError_Success;
     }
 
     // Parses a JSON array of 32-byte hex strings into a contiguous byte buffer of siblings.
@@ -358,13 +358,13 @@ namespace {
     // Mentions borrow the identities' heap fields; free the identities only after use.
     bool buildAccountMentions(
         const std::vector<FfiAccountIdentity>& identities,
-        const std::vector<std::string>& shard_program_account_ids_hex,
-        const FfiBytes32* default_shard,
+        const std::vector<std::string>& actor_state_program_account_ids_hex,
+        const FfiBytes32* default_actor_state,
         std::vector<FfiAccountMention>& out_mentions,
         std::string& out_error
     ) {
-        if (!shard_program_account_ids_hex.empty() && shard_program_account_ids_hex.size() != identities.size()) {
-            out_error = "shard_program_account_ids_hex must be empty or match account_ids in size";
+        if (!actor_state_program_account_ids_hex.empty() && actor_state_program_account_ids_hex.size() != identities.size()) {
+            out_error = "actor_state_program_account_ids_hex must be empty or match account_ids in size";
             return false;
         }
 
@@ -375,17 +375,17 @@ namespace {
             mention.identity = identities[i];
 
             const bool hasOverride =
-                !shard_program_account_ids_hex.empty() && !shard_program_account_ids_hex[i].empty();
+                !actor_state_program_account_ids_hex.empty() && !actor_state_program_account_ids_hex[i].empty();
             if (hasOverride) {
-                if (!hexToBytes32(shard_program_account_ids_hex[i], &mention.program_account_id)) {
-                    out_error = "invalid shard_program_account_ids_hex[" + std::to_string(i) + "]";
+                if (!hexToBytes32(actor_state_program_account_ids_hex[i], &mention.program_account_id)) {
+                    out_error = "invalid actor_state_program_account_ids_hex[" + std::to_string(i) + "]";
                     return false;
                 }
-            } else if (default_shard) {
-                mention.program_account_id = *default_shard;
+            } else if (default_actor_state) {
+                mention.program_account_id = *default_actor_state;
             } else {
                 out_error =
-                    "shard_program_account_ids_hex[" + std::to_string(i) +
+                    "actor_state_program_account_ids_hex[" + std::to_string(i) +
                     "] is required when the root program's account id is unknown (shadow root without account_id)";
                 return false;
             }
@@ -528,7 +528,7 @@ namespace {
         const std::string& program_kind_json,
         const std::vector<std::vector<uint8_t>>& program_dependencies,
         const std::vector<std::string>& dependency_kinds_json,
-        const std::vector<std::string>& shard_program_account_ids_hex
+        const std::vector<std::string>& actor_state_program_account_ids_hex
     ) {
         if (dependency_kinds_json.size() != program_dependencies.size()) {
             fprintf(stderr, "%s: dependency_kinds_json size must match program_dependencies\n", method);
@@ -613,7 +613,7 @@ namespace {
         std::string mentions_error;
         if (!buildAccountMentions(
                 accounts.identities,
-                shard_program_account_ids_hex,
+                actor_state_program_account_ids_hex,
                 root.has_account_id ? &root.account_id : nullptr,
                 mentions,
                 mentions_error
@@ -815,10 +815,6 @@ std::string LEZCoreModule::get_private_account_keys(const std::string& account_i
         return {};
     }
 
-    // NPK/VPK identify the key group a private account belongs to, not one specific
-    // account within it — there's no real identifier to attach here. (wallet_ffi_resolve_private_account
-    // can't supply one either: for a regular owned account it returns AccountIdentity::PrivateOwned,
-    // which carries no identifier and defaults to zero — not a real value.)
     std::string result = ffiPrivateAccountKeysToJson(keys);
     primitives_ffi_free_private_account_keys(&keys);
     return result;
@@ -930,7 +926,7 @@ std::string LEZCoreModule::transfer_shielded(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
+        primitives_ffi_free_private_account_keys(&toKeys);
         return transferResultToJson(nullptr, "transfer_shielded: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
@@ -940,7 +936,7 @@ std::string LEZCoreModule::transfer_shielded(
     FfiTransferResult result{};
     const FfiOperationError error =
         wallet_ffi_transfer_shielded(walletHandle, &fromId, &toKeys, &amount, key_path, &result);
-    free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
+    primitives_ffi_free_private_account_keys(&toKeys);
     if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_shielded: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_shielded: wallet FFI error " + std::to_string(error));
@@ -1000,14 +996,14 @@ std::string LEZCoreModule::transfer_private(
     uint8_t amount[16];
     if (!hexToU128(amount_le16_hex, &amount)) {
         fprintf(stderr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)\n");
-        free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
+        primitives_ffi_free_private_account_keys(&toKeys);
         return transferResultToJson(nullptr, "transfer_private: amount_le16_hex must be 32 hex characters (16 bytes)");
     }
 
     FfiTransferResult result{};
     const FfiOperationError error =
         wallet_ffi_transfer_private(walletHandle, &fromId, &toKeys, &amount, &result);
-    free(const_cast<uint8_t*>(toKeys.viewing_public_key.entries));
+    primitives_ffi_free_private_account_keys(&toKeys);
     if (error != FfiOperationError_Success) {
         fprintf(stderr, "transfer_private: wallet FFI error %d\n", error);
         return transferResultToJson(nullptr, "transfer_private: wallet FFI error " + std::to_string(error));
@@ -1111,7 +1107,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
     const std::vector<bool>& signing_requirements,
     const std::vector<uint8_t>& message,
     const std::string& payer_account_id_hex,
-    const std::vector<std::string>& shard_program_account_ids_hex
+    const std::vector<std::string>& actor_state_program_account_ids_hex
 ) {
     if (signing_requirements.size() != account_ids.size()) {
         fprintf(stderr, "send_generic_public_transaction: signing_requirements size must match account_ids\n");
@@ -1164,7 +1160,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
     std::vector<FfiAccountMention> mentions;
     std::string mentions_error;
     if (!buildAccountMentions(
-            identities_resolved, shard_program_account_ids_hex, &identities_resolved[root_mention].account_id, mentions, mentions_error
+            identities_resolved, actor_state_program_account_ids_hex, &identities_resolved[root_mention].account_id, mentions, mentions_error
         )) {
         fprintf(stderr, "send_generic_public_transaction: %s\n", mentions_error.c_str());
         free_identities();
@@ -1205,7 +1201,7 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const std::string& program_kind_json,
     const std::vector<std::vector<uint8_t>>& program_dependencies,
     const std::vector<std::string>& dependency_kinds_json,
-    const std::vector<std::string>& shard_program_account_ids_hex
+    const std::vector<std::string>& actor_state_program_account_ids_hex
 ) {
     return sendGenericPrivateTransaction(
         walletHandle,
@@ -1219,7 +1215,7 @@ std::string LEZCoreModule::send_generic_private_transaction(
         program_kind_json,
         program_dependencies,
         dependency_kinds_json,
-        shard_program_account_ids_hex
+        actor_state_program_account_ids_hex
     );
 }
 
@@ -1231,7 +1227,7 @@ std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
     const std::string& program_kind_json,
     const std::vector<std::vector<uint8_t>>& program_dependencies,
     const std::vector<std::string>& dependency_kinds_json,
-    const std::vector<std::string>& shard_program_account_ids_hex
+    const std::vector<std::string>& actor_state_program_account_ids_hex
 ) {
     return sendGenericPrivateTransaction(
         walletHandle,
@@ -1252,7 +1248,7 @@ std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
         program_kind_json,
         program_dependencies,
         dependency_kinds_json,
-        shard_program_account_ids_hex
+        actor_state_program_account_ids_hex
     );
 }
 
