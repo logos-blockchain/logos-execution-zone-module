@@ -450,8 +450,6 @@ namespace {
         }
     };
 
-    using AccountsResolver = std::function<bool(PrivateSendAccounts&, std::string&)>;
-
     bool resolveOwnedPrivateAccounts(
         WalletHandle* wallet_handle,
         const std::vector<std::string>& account_ids,
@@ -553,7 +551,7 @@ namespace {
     std::string sendGenericPrivateTransaction(
         WalletHandle* wallet_handle,
         const char* method,
-        const AccountsResolver& resolve_accounts,
+        const std::vector<FfiAccountIdentity>& identities,
         const std::vector<uint8_t>& instruction,
         const std::vector<uint8_t>& program_elf,
         const std::string& program_kind_json,
@@ -634,17 +632,10 @@ namespace {
         program_with_dependencies.programs = programs.data();
         program_with_dependencies.programs_size = static_cast<uintptr_t>(programs.size());
 
-        PrivateSendAccounts accounts;
-        std::string resolve_error;
-        if (!resolve_accounts(accounts, resolve_error)) {
-            fprintf(stderr, "%s: %s\n", method, resolve_error.c_str());
-            return transferResultToJson(nullptr, std::string(method) + ": " + resolve_error);
-        }
-
         std::vector<FfiAccountMention> mentions;
         std::string mentions_error;
         if (!buildAccountMentions(
-                accounts.identities,
+                identities,
                 shard_program_account_ids_hex,
                 root.has_account_id ? &root.account_id : nullptr,
                 mentions,
@@ -691,7 +682,7 @@ std::string LEZCoreModule::name() const {
 }
 
 std::string LEZCoreModule::version() const {
-    return "0.5.2";
+    return "0.5.1";
 }
 
 // === Wallet Location ===
@@ -1228,12 +1219,16 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const std::vector<std::string>& dependency_kinds_json,
     const std::vector<std::string>& shard_program_account_ids_hex
 ) {
+    PrivateSendAccounts accounts;
+    std::string error;
+    if (!resolveOwnedPrivateAccounts(walletHandle, account_ids, accounts, error)) {
+        return transferResultToJson(nullptr, "send_generic_private_transaction: " + error);
+    }
+
     return sendGenericPrivateTransaction(
         walletHandle,
         "send_generic_private_transaction",
-        [this, &account_ids](PrivateSendAccounts& accounts, std::string& error) {
-            return resolveOwnedPrivateAccounts(walletHandle, account_ids, accounts, error);
-        },
+        accounts.identities,
         instruction,
         program_elf,
         program_kind_json,
@@ -1252,19 +1247,20 @@ std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
     const std::vector<std::string>& dependency_kinds_json,
     const std::vector<std::string>& shard_program_account_ids_hex
 ) {
+    PrivateSendAccounts accounts;
+    std::string error;
+    for (size_t i = 0; i < accounts_json.size(); ++i) {
+        std::string account_error;
+        if (!resolveDescribedAccount(walletHandle, accounts_json[i], accounts, account_error)) {
+            error = "accounts_json[" + std::to_string(i) + "] " + account_error;
+            return transferResultToJson(nullptr, "send_generic_private_transaction: " + error);
+        }
+    }
+
     return sendGenericPrivateTransaction(
         walletHandle,
         "send_generic_private_transaction_with_accounts",
-        [this, &accounts_json](PrivateSendAccounts& accounts, std::string& error) {
-            for (size_t i = 0; i < accounts_json.size(); ++i) {
-                std::string account_error;
-                if (!resolveDescribedAccount(walletHandle, accounts_json[i], accounts, account_error)) {
-                    error = "accounts_json[" + std::to_string(i) + "] " + account_error;
-                    return false;
-                }
-            }
-            return true;
-        },
+        accounts.identities,
         instruction,
         program_elf,
         program_kind_json,
