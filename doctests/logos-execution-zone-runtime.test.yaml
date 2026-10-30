@@ -191,12 +191,12 @@ sections:
 
       - title: "Read the module version"
         text: |
-          `version` returns the module's semantic version (`0.5.1`), matching
+          `version` returns the module's semantic version (`0.6.0`), matching
           `metadata.json`:
         run: "./logos/bin/logosctl --config-dir ./session call lez_core version"
         code_block: "logosctl call lez_core version"
         expect_contains:
-          - '"result":"0.5.1"'
+          - '"result":"0.6.0"'
 
       - title: "Encode an account id to base58"
         text: |

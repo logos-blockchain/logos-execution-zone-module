@@ -1,5 +1,5 @@
-#ifndef MOCK_WALLET_FFI_CAPTURE_H
-#define MOCK_WALLET_FFI_CAPTURE_H
+#ifndef MOCK_CORE_FFI_CAPTURE_H
+#define MOCK_CORE_FFI_CAPTURE_H
 
 // LogosCMockStore (logos_clib_mock.h) only lets tests control return values, not
 // inspect call arguments. The transfer_shielded/transfer_private identifier logic
@@ -9,7 +9,7 @@
 #include <vector>
 
 extern "C" {
-#include <wallet_ffi.h>
+#include <core_ffi.h>
 }
 
 namespace MockWalletFfiCapture {
@@ -26,4 +26,4 @@ extern std::vector<FfiDependency> lastPrograms;
 
 } // namespace MockWalletFfiCapture
 
-#endif // MOCK_WALLET_FFI_CAPTURE_H
+#endif // MOCK_CORE_FFI_CAPTURE_H
