@@ -23,6 +23,7 @@ namespace MockWalletFfiCapture {
 uint8_t lastTransferShieldedIdentifier[32] = {0};
 uint8_t lastTransferPrivateIdentifier[32] = {0};
 std::vector<FfiAccountMention> lastMentions;
+std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
 FfiBytes32 lastSelfAccountId{};
 std::vector<FfiDependency> lastPrograms;
 } // namespace MockWalletFfiCapture
@@ -389,7 +390,11 @@ void wallet_ffi_free_transfer_result(FfiTransferResult* result) {
 
 WalletFfiError wallet_ffi_resolve_public_account(FfiBytes32 account_id, bool needs_sign, FfiAccountIdentity *out_account_identity) {
     LOGOS_CMOCK_RECORD("wallet_ffi_resolve_public_account");
-    return fillPublicAccountIdentity("wallet_ffi_resolve_public_account", out_account_identity);
+    const WalletFfiError err = fillPublicAccountIdentity("wallet_ffi_resolve_public_account", out_account_identity);
+    // As the real resolver does: an account that need not sign is mentioned as PublicNoSign.
+    if (err == SUCCESS && out_account_identity && !needs_sign)
+        out_account_identity->kind = FfiAccountIdentityKind::PUBLIC_NO_SIGN;
+    return err;
 }
 
 WalletFfiError wallet_ffi_resolve_private_account(WalletHandle *handle, FfiBytes32 account_id, FfiAccountIdentity *out_account_identity){
@@ -436,6 +441,12 @@ uintptr_t account_mentions_size, const uint8_t *instruction_data, uintptr_t inst
 const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResult *out_result){
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_private_transaction");
     MockWalletFfiCapture::lastMentions.assign(account_mentions, account_mentions + account_mentions_size);
+    MockWalletFfiCapture::lastViewingPublicKeys.clear();
+    for (uintptr_t i = 0; i < account_mentions_size; ++i) {
+        const FfiAccountIdentity& identity = account_mentions[i].identity;
+        MockWalletFfiCapture::lastViewingPublicKeys.emplace_back(
+            identity.viewing_public_key, identity.viewing_public_key + identity.viewing_public_key_len);
+    }
     MockWalletFfiCapture::lastSelfAccountId = program_with_dependencies->self_account_id;
     MockWalletFfiCapture::lastPrograms.assign(
         program_with_dependencies->programs, program_with_dependencies->programs + program_with_dependencies->programs_size);

@@ -5,6 +5,7 @@
 #include "lez_core_module.h"
 #include "mocks/mock_wallet_ffi_capture.h"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -632,6 +633,105 @@ LOGOS_TEST(send_generic_private_transaction_dependency_kinds_size_mismatch_error
         parseObject(module.send_generic_private_transaction({VALID_ID}, {}, {0x7f}, root, {{0x7f}}, {}, {}));
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
     LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+}
+
+// The keys of another user, as get_private_account_keys returns them.
+static std::string foreignAccount(const std::string& extra = "") {
+    return R"({"kind": "private_foreign", "nullifier_public_key": ")" + VALID_ID_C
+        + R"(", "viewing_public_key": ")" + std::string(2 * 1184, 'e') + "\"" + extra + "}";
+}
+
+static std::string describedAccount(const std::string& kind, const std::string& account_id) {
+    return R"({"kind": ")" + kind + R"(", "account_id": ")" + account_id + R"("})";
+}
+
+static nlohmann::json sendWithAccounts(LEZCoreModule& module, const std::vector<std::string>& accounts) {
+    const std::string root = R"({"kind": "disclosed", "account_id": ")" + VALID_ID_C + R"("})";
+    return parseObject(module.send_generic_private_transaction_with_accounts(accounts, {}, {0x7f}, root, {}, {}, {}));
+}
+
+LOGOS_TEST(send_generic_private_transaction_with_accounts_mentions_each_kind) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const nlohmann::json obj = sendWithAccounts(
+        module,
+        {describedAccount("private_owned", VALID_ID),
+         describedAccount("public_no_sign", VALID_ID_2),
+         describedAccount("public", VALID_ID_2),
+         foreignAccount(R"(, "identifier": ")" + VALID_ID_D + "\"")}
+    );
+    LOGOS_ASSERT_TRUE(obj["success"].get<bool>());
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_resolve_private_account"));
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_resolve_public_account"));
+
+    const auto& mentions = MockWalletFfiCapture::lastMentions;
+    LOGOS_ASSERT_EQ(mentions.size(), static_cast<size_t>(4));
+    LOGOS_ASSERT_EQ(mentions[0].identity.kind, PRIVATE_OWNED);
+    LOGOS_ASSERT_EQ(mentions[1].identity.kind, PUBLIC_NO_SIGN);
+    LOGOS_ASSERT_EQ(mentions[2].identity.kind, PUBLIC);
+    LOGOS_ASSERT_EQ(mentions[3].identity.kind, PRIVATE_FOREIGN);
+    LOGOS_ASSERT_TRUE(bytesEqual(mentions[3].identity.nullifier_public_key, 0xCC));
+    LOGOS_ASSERT_TRUE(bytesEqual(mentions[3].identity.identifier, 0xDD));
+
+    const std::vector<uint8_t>& viewing_key = MockWalletFfiCapture::lastViewingPublicKeys[3];
+    LOGOS_ASSERT_EQ(viewing_key.size(), static_cast<size_t>(1184));
+    LOGOS_ASSERT_TRUE(std::all_of(viewing_key.begin(), viewing_key.end(), [](uint8_t b) { return b == 0xEE; }));
+    // Every mention is of the called program's shard unless overridden.
+    for (const FfiAccountMention& mention : mentions)
+        LOGOS_ASSERT_TRUE(bytesEqual(mention.program_account_id, 0xCC));
+}
+
+LOGOS_TEST(send_generic_private_transaction_with_accounts_picks_a_fresh_identifier_for_a_foreign_account) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_TRUE(sendWithAccounts(module, {foreignAccount()})["success"].get<bool>());
+    const FfiIdentifier first = MockWalletFfiCapture::lastMentions[0].identity.identifier;
+    LOGOS_ASSERT_TRUE(sendWithAccounts(module, {foreignAccount()})["success"].get<bool>());
+    const FfiIdentifier second = MockWalletFfiCapture::lastMentions[0].identity.identifier;
+
+    LOGOS_ASSERT_FALSE(memcmp(first.data, second.data, sizeof(first.data)) == 0);
+}
+
+LOGOS_TEST(send_generic_private_transaction_with_accounts_never_frees_a_foreign_account_through_the_ffi) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    // Its viewing key is the module's own memory, which the FFI's free would release with Rust's allocator.
+    LOGOS_ASSERT_TRUE(sendWithAccounts(module, {foreignAccount()})["success"].get<bool>());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_free_account_identity"));
+}
+
+LOGOS_TEST(send_generic_private_transaction_with_accounts_frees_resolved_accounts_on_a_bad_entry) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    const std::string short_viewing_key =
+        R"({"kind": "private_foreign", "nullifier_public_key": ")" + VALID_ID_C + R"(", "viewing_public_key": "ee"})";
+    const nlohmann::json obj =
+        sendWithAccounts(module, {describedAccount("private_owned", VALID_ID), short_viewing_key});
+    LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+    LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_free_account_identity"));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
+}
+
+LOGOS_TEST(send_generic_private_transaction_with_accounts_rejects_malformed_entries) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    for (const std::string& account : std::vector<std::string>{
+             "not json",
+             R"({"account_id": ")" + VALID_ID + R"("})",
+             describedAccount("public_signer", VALID_ID),
+             describedAccount("public_no_sign", "bad"),
+             R"({"kind": "private_foreign", "viewing_public_key": ")" + std::string(2 * 1184, 'e') + R"("})",
+             foreignAccount(R"(, "identifier": "bad")")}) {
+        const nlohmann::json obj = sendWithAccounts(module, {account});
+        LOGOS_ASSERT_FALSE(obj["success"].get<bool>());
+        LOGOS_ASSERT_FALSE(obj["error"].get<std::string>().empty());
+    }
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_send_generic_private_transaction"));
 }
 
 // ============================================================================
