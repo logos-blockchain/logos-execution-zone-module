@@ -67,9 +67,14 @@ FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char
     return output;
 }
 
-FfiOperationError wallet_ffi_open(const char*, const char*, const SequencerServiceFFI*, const char*, WalletHandle**) {
+FfiOperationError wallet_ffi_open(const char*, const char*, const SequencerServiceFFI*, const char*, WalletHandle** out_handle) {
     LOGOS_CMOCK_RECORD("wallet_ffi_open");
-    return static_cast<FfiOperationError>(LOGOS_CMOCK_RETURN(int, "wallet_ffi_open"));
+    const int rc = LOGOS_CMOCK_RETURN(int, "wallet_ffi_open");
+    const auto err = static_cast<FfiOperationError>(rc);
+    if (err == FfiOperationError_Success && out_handle) {
+        *out_handle = reinterpret_cast<WalletHandle*>(&g_fakeWallet);
+    }
+    return err;
 }
 
 FfiOperationError wallet_ffi_save(WalletHandle*) {
