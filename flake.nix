@@ -12,7 +12,7 @@
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx";
     lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
     logos-execution-zone = {
-      url = "github:logos-blockchain/logos-execution-zone?ref=dev";
+      url = "github:logos-blockchain/logos-execution-zone?ref=v0.4.0-rc1";
       inputs.rust-overlay.follows = "lez-rust-overlay";
     };
   };
