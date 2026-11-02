@@ -412,7 +412,7 @@ std::string LEZCoreModule::get_account_public(const std::string& account_id_hex)
         fprintf(stderr, "get_account_public: wallet FFI error %d\n", error);
         return {};
     }
-    std::string result = ffiAccountToJson(account);
+    std::string result = jsonToCompactString(ffiAccountToJson(account));
     wallet_ffi_free_account_data(&account);
     return result;
 }
@@ -429,7 +429,7 @@ std::string LEZCoreModule::get_account_private(const std::string& account_id_hex
         fprintf(stderr, "get_account_private: wallet FFI error %d\n", error);
         return {};
     }
-    std::string result = ffiAccountToJson(account);
+    std::string result = jsonToCompactString(ffiAccountToJson(account));
     wallet_ffi_free_account_data(&account);
     return result;
 }

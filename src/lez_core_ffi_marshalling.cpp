@@ -211,30 +211,30 @@ namespace marshalling {
         nlohmann::json obj;
 
         switch (tx.kind) {
-        case Public: {
+        case FfiTransactionKind_Public: {
             const FfiPublicTransactionBody* body = tx.body.public_body;
             if (!body) {
                 break;
             }
             obj["type"] = "Public";
             obj["hash"] = bytesToHex(body->hash.data, 32);
-            obj["program_account_id"] = bytes32ToBase58(body->message.program_account_id.data, 32);
+            obj["program_account_id"] = bytes32ToBase58(body->message.root.to.program_account_id.data, 32);
 
             nlohmann::json accounts = nlohmann::json::array();
-            const FfiProgramShardSelectorList& selectors = body->message.shard_selectors;
+            const FfiActorList& actors = body->message.public_context.actors;
             const FfiNonceList& nonces = body->message.nonces;
-            for (uintptr_t i = 0; i < selectors.len; ++i) {
+            for (uintptr_t i = 0; i < actors.len; ++i) {
                 nlohmann::json ref;
-                ref["account_id"] = bytes32ToBase58(selectors.entries[i].account_id.data, 32);
-                ref["program_account_id"] = bytes32ToBase58(selectors.entries[i].program_account_id.data, 32);
-                ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].data) : std::string("0");
+                ref["account_id"] = bytes32ToBase58(actors.entries[i].account_id.data, 32);
+                ref["program_account_id"] = bytes32ToBase58(actors.entries[i].program_account_id.data, 32);
+                ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].nonce.data) : std::string("0");
                 accounts.push_back(ref);
             }
             obj["accounts"] = accounts;
 
             // Raw instruction bytes as hex.
-            const FfiInstructionDataList& instr = body->message.instruction_data;
-            obj["instruction_data"] = bytesToHex(instr.entries, instr.len);
+            const FfiMessageDataList& messsage = body->message.root.message;    
+            obj["instruction_data"] = bytesToHex(messsage.entries, messsage.len);
             obj["signature_count"] = static_cast<int>(body->witness_set.len);
 
             // Declared fee (payer + caps), not the amount actually charged.
@@ -252,7 +252,7 @@ namespace marshalling {
             }
             break;
         }
-        case Private: {
+        case FfiTransactionKind_Private: {
             const FfiPrivateTransactionBody* body = tx.body.private_body;
             if (!body) {
                 break;
@@ -261,12 +261,13 @@ namespace marshalling {
             obj["hash"] = bytesToHex(body->hash.data, 32);
 
             nlohmann::json accounts = nlohmann::json::array();
-            const FfiPublicActionList& publicActions = body->message.public_actions;
+            const FfiActorList& actors = body->message.public_context.actors;
             const FfiNonceList& nonces = body->message.nonces;
-            for (uintptr_t i = 0; i < publicActions.len; ++i) {
+            for (uintptr_t i = 0; i < actors.len; ++i) {
                 nlohmann::json ref;
-                ref["account_id"] = bytes32ToBase58(publicActions.entries[i].account_id.data, 32);
-                ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].data) : std::string("0");
+                ref["account_id"] = bytes32ToBase58(actors.entries[i].account_id.data, 32);
+                ref["program_account_id"] = bytes32ToBase58(actors.entries[i].program_account_id.data, 32);
+                ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].nonce.data) : std::string("0");
                 accounts.push_back(ref);
             }
             obj["accounts"] = accounts;
@@ -289,11 +290,11 @@ namespace marshalling {
     namespace {
         std::string bedrockStatusToString(FfiBedrockStatus status) {
             switch (status) {
-            case Safe:
+            case FfiBedrockStatus_Safe:
                 return "Safe";
-            case Finalized:
+            case FfiBedrockStatus_Finalized:
                 return "Finalized";
-            case Pending:
+            case FfiBedrockStatus_Pending:
             default:
                 return "Pending";
             }
@@ -318,6 +319,28 @@ namespace marshalling {
 
     std::string jsonToCompactString(const nlohmann::json& j) {
         return j.dump();
+    }
+
+    // Balance from wallet_ffi_get_balance is 16 bytes little-endian (u128). Convert to decimal string for UI.
+    // Requires __uint128_t (GCC/Clang on 64-bit).
+    std::string balanceLe16ToDecimalString(const uint8_t* data) {
+#if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ >= 16
+        __uint128_t v = 0;
+        for (int i = 0; i < 16; ++i)
+            v |= static_cast<__uint128_t>(data[i]) << (i * 8);
+        if (v == 0)
+            return "0";
+        char buf[40];
+        int i = 0;
+        while (v) {
+            buf[i++] = static_cast<char>('0' + (v % 10));
+            v /= 10;
+        }
+        std::reverse(buf, buf + i);
+        return std::string(buf, i);
+#else
+#error "balanceLe16ToDecimalString requires __uint128_t; build with GCC or Clang on 64-bit"
+#endif
     }
 
     bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength = -1) {
@@ -506,17 +529,6 @@ namespace marshalling {
         }
         return true;
     }
-
-    // FfiMembershipProof.path points into proof_path_bytes, which must outlive it.
-    struct ParsedProgramKind {
-        FfiProgramKind kind{};
-        // Required for disclosed/undisclosed; optional for shadow (the FFI derives its address).
-        bool has_account_id = false;
-        FfiBytes32 account_id{};
-        FfiProgramHeader program_header{};
-        std::vector<uint8_t> proof_path_bytes;
-        FfiMembershipProof membership_proof{};
-    };
 
     bool jsonToProgramKind(const std::string& json, ParsedProgramKind* out) {
         nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);

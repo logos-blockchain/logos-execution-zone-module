@@ -93,7 +93,11 @@ namespace marshalling {
     // Compact serialization (no spaces/newlines) of an object or array.
     std::string jsonToCompactString(const nlohmann::json& j);
 
-    bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength = -1);
+    // Balance from wallet_ffi_get_balance is 16 bytes little-endian (u128). Convert to decimal string for UI.
+    // Requires __uint128_t (GCC/Clang on 64-bit).
+    std::string balanceLe16ToDecimalString(const uint8_t* data);
+
+    bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength);
     bool hexToU128(const std::string& hex, uint8_t (*output)[16]);
     std::string bytes32ToHex(const FfiBytes32& bytes);
 
