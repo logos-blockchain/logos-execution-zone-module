@@ -16,6 +16,8 @@ logos_module(
     SOURCES
         src/lez_core_module.h
         src/lez_core_module.cpp
+        src/lez_core_ffi_marshalling.h
+        src/lez_core_ffi_marshalling.cpp
     EXTERNAL_LIBS
         core_ffi
 )
