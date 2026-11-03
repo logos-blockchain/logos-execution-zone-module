@@ -134,6 +134,35 @@ public:
     int64_t add_label(const std::string& label, const std::string& account_id_hex, bool is_private);
     std::string resolve_label(const std::string& label);
     std::vector<std::string> get_all_labels_for_account(const std::string& account_id_hex, bool is_private);
+    
+    // === Sequencer queries ===
+    /// Account by id, accepting Base58 (canonical) or 32-byte hex. The returned
+    /// JSON omits the id; callers inject the queried id themselves.
+    std::string getAccount(const std::string& account_id);
+    /// Block by decimal block id.
+    std::string getBlockById(const std::string& block_id);
+    /// Block by 32-byte hex hash.
+    std::string getBlockByHash(const std::string& hash);
+    /// Transaction by 32-byte hex hash.
+    std::string getTransaction(const std::string& hash);
+    /// Page of blocks: `before` = "" for the tip, else a block id to page back
+    /// from; `limit` is the decimal max count.
+    std::string getBlocks(const std::string& before, const std::string& limit);
+    /// Tip block id as a bare decimal string.
+    std::string getLastFinalizedBlockId();
+    /// Current ingestion status of an underlying sequencer. Empty string if the
+    /// sequencer isn't running.
+    /// TODO: Not implemented yet. Update with parsing whn implemented. 
+    std::string getStatus();
+    /// Transactions touching `account_id` (Base58 or 32-byte hex), paginated by
+    /// decimal `offset`/`limit`.
+    //
+    // MUST stay on a single line: the universal `--header-to-lidl` parser drops
+    // methods whose parameter list spans multiple lines, so a wrapped signature
+    // silently vanishes from the published LIDL contract (and thus from typed
+    // consumers like lez_explorer_ui). clang-format off keeps the linter from
+    // re-wrapping this long line.
+    std::string getTransactionsByAccount(const std::string& account_id, const std::string& offset, const std::string& limit);
 
 private:
     WalletHandle* walletHandle = nullptr;

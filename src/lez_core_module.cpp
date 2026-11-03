@@ -1185,3 +1185,249 @@ std::vector<std::string> LEZCoreModule::get_all_labels_for_account(const std::st
 
     return result;
 }
+
+// === Sequencer queries ===
+//
+// Each method calls the matching sequencer_query_* FFI function on the handle we hold,
+// marshals the returned C struct into compact JSON, then frees the FFI
+// allocation with the matching primitives_free_ffi_* function. The frees take the outer
+// pointer (PointerResult.value) and reclaim the whole allocation.
+
+std::string LEZCoreModule::getAccount(const std::string& account_id) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getAccount failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiAccountId id;
+    if (!accountStrToBytes32(account_id, &id)) {
+        fprintf(stderr, "getAccount failed : invalid account id (need Base58 or 32-byte hex) \n");
+        return {};
+    }
+
+    PointerResult_FfiOption_FfiAccount_____FfiOperationError res = sequencer_ffi_query_account(sequencerHandle, id);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getAccount failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiAccountToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getAccount warning : account with id %s not found \n", account_id.c_str());
+    }
+
+    // TODO: Yes, this is a typo, need to fix core_ffi.
+    primitves_ffi_free_ffi_account_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getBlockById(const std::string& block_id) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getBlockById failed : sequencer not started \n");
+        return {};
+    }
+
+    char* end = nullptr;
+    const uint64_t id = std::strtoull(block_id.c_str(), &end, 10);
+    if (end == block_id.c_str() || *end != '\0') {
+        fprintf(stderr, "getBlockById failed : invalid block id \n");
+        return {};
+    }
+
+    PointerResult_FfiBlockOpt__FfiOperationError res = sequencer_ffi_query_block(sequencerHandle, id);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getBlockById failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiBlockToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getBlockById warning : block with id %s not found \n", block_id.c_str());
+    }
+
+    primitives_ffi_free_ffi_block_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getBlockByHash(const std::string& hash) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getBlockByHash failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiHashType h;
+    if (!hexToBytes32(hash, &h)) {
+        fprintf(stderr, "getBlockByHash failed : invalid hash (need 32-byte hex) \n");
+        return {};
+    }
+
+    PointerResult_FfiBlockOpt__FfiOperationError res = sequencer_ffi_query_block_by_hash(sequencerHandle, h);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getBlockByHash failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiBlockToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getBlockByHash warning : block with hash %s not found \n", hash.c_str());
+    }
+    primitives_ffi_free_ffi_block_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getTransaction(const std::string& hash) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getTransaction failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiHashType h;
+    if (!hexToBytes32(hash, &h)) {
+        fprintf(stderr, "getTransaction failed : invalid hash (need 32-byte hex) \n");
+        return {};
+    }
+
+    PointerResult_FfiOption_FfiTransaction_____FfiOperationError res =
+        sequencer_ffi_query_transaction(sequencerHandle, h);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getTransaction failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiTransactionToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getTransaction warning : transaction with hash %s not found \n", hash.c_str());
+    }
+    primitives_ffi_free_ffi_transaction_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getBlocks(const std::string& before, const std::string& limit) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getBlocks failed : sequencer not started \n");
+        return {};
+    }
+
+    char* end = nullptr;
+    const uint64_t limitNum = std::strtoull(limit.c_str(), &end, 10);
+    if (end == limit.c_str() || *end != '\0') {
+        fprintf(stderr, "getBlocks failed : invalid limit \n");
+        return {};
+    }
+
+    // `before` is the optional pagination cursor: an empty string means "from
+    // the tip", a non-empty value that fails to parse is an error. `beforeVal`
+    // must outlive the call since FfiOption_u64 borrows its address.
+    uint64_t beforeVal = 0;
+    bool hasBefore = false;
+    if (!before.empty()) {
+        char* bend = nullptr;
+        beforeVal = std::strtoull(before.c_str(), &bend, 10);
+        if (bend == before.c_str() || *bend != '\0') {
+            fprintf(stderr, "getBlocks failed : invalid before \n");
+            return {};
+        }
+        hasBefore = true;
+    }
+    FfiOption_u64 beforeOpt;
+    beforeOpt.is_some = hasBefore;
+    beforeOpt.value = hasBefore ? &beforeVal : nullptr;
+
+    PointerResult_FfiVec_FfiBlock_____FfiOperationError res =
+        sequencer_ffi_query_block_vec(sequencerHandle, beforeOpt, limitNum);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getBlocks failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (uintptr_t i = 0; i < res.value->len; ++i) {
+        arr.push_back(ffiBlockToJson(res.value->entries[i]));
+    }
+    primitives_ffi_free_ffi_block_vec(res.value);
+    return jsonToCompactString(arr);
+}
+
+std::string LEZCoreModule::getLastFinalizedBlockId() {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getLastFinalizedBlockId failed : sequencer not started \n");
+        return {};
+    }
+
+    LastBlockIdResult res = sequencer_ffi_query_last_block(sequencerHandle);
+    if ((res.error != FfiOperationError_Success) || !res.is_some) {
+        fprintf(stderr, "getLastFinalizedBlockId failed : sequencer FFI error or no finalized block yet \n");
+        return {};
+    }
+
+    // Bare decimal string; the id is returned inline, nothing to free.
+    return u64ToString(res.block_id);
+}
+
+std::string LEZCoreModule::getStatus() {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getStatus failed : sequencer not started \n");
+        return {};
+    }
+
+    // The FFI builds the status JSON itself (schema owned by sequencer_core), so
+    // there is nothing to marshal — copy the C string out and free it.
+    char* json = sequencer_ffi_query_status(sequencerHandle);
+    if (!json) {
+        fprintf(stderr, "getStatus failed : sequencer FFI error \n");
+        return {};
+    }
+
+    primitives_ffi_free_cstring(json);
+    // TODO: Not implemented yet. Return json string whem implemented.
+    return "Syncing";
+}
+
+std::string LEZCoreModule::getTransactionsByAccount(
+    const std::string& account_id,
+    const std::string& offset,
+    const std::string& limit
+) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getTransactionsByAccount failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiAccountId id;
+    if (!accountStrToBytes32(account_id, &id)) {
+        fprintf(stderr, "getTransactionsByAccount failed : invalid account id (need Base58 or 32-byte hex) \n");
+        return {};
+    }
+
+    char* offEnd = nullptr;
+    char* limEnd = nullptr;
+    const uint64_t offsetNum = std::strtoull(offset.c_str(), &offEnd, 10);
+    const uint64_t limitNum = std::strtoull(limit.c_str(), &limEnd, 10);
+    if (offEnd == offset.c_str() || *offEnd != '\0' || limEnd == limit.c_str() || *limEnd != '\0') {
+        fprintf(stderr, "getTransactionsByAccount failed : invalid offset/limit \n");
+        return {};
+    }
+
+    PointerResult_FfiVec_FfiTransaction_____FfiOperationError res =
+        sequencer_ffi_query_transactions_by_account(sequencerHandle, id, offsetNum, limitNum);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getTransactionsByAccount failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (uintptr_t i = 0; i < res.value->len; ++i) {
+        arr.push_back(ffiTransactionToJson(res.value->entries[i]));
+    }
+    primitives_ffi_free_ffi_transaction_vec(res.value);
+    return jsonToCompactString(arr);
+}
