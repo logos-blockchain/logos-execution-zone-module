@@ -307,7 +307,7 @@ std::string LEZCoreModule::name() const {
 }
 
 std::string LEZCoreModule::version() const {
-    return "0.6.0";
+    return "0.6.1";
 }
 
 // === Persistent locations ===
