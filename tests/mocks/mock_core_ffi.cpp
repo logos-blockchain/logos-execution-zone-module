@@ -617,70 +617,16 @@ FfiOperationError wallet_ffi_free_label_list(LabelList *label_list) {
 PointerResult_FfiOption_FfiAccount_____FfiOperationError sequencer_ffi_query_account(const SequencerServiceFFI *sequencer,
                                                                                             FfiAccountId account_id) {
     LOGOS_CMOCK_RECORD("sequencer_ffi_query_account");
-    const int err = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_query_account");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
     PointerResult_FfiOption_FfiAccount_____FfiOperationError res;
-    if (err == 0) {
-        // Actor state payloads
-        const std::vector<uint8_t> payload0 = {0x01, 0x02, 0x03, 0x04};
-        const std::vector<uint8_t> payload1 = {0xAA, 0xBB};
-
-        const size_t actor_count = 2;
-        FfiActorState* states = new FfiActorState[actor_count];
-
-        // Actor state 0
-        std::memset(states[0].program.data, 0x11, sizeof(states[0].program.data));
-        uint8_t* data0 = new uint8_t[payload0.size()];
-        std::memcpy(data0, payload0.data(), payload0.size());
-        states[0].data = data0;
-        states[0].data_len = payload0.size();
-
-        // Actor state 1
-        std::memset(states[1].program.data, 0x22, sizeof(states[1].program.data));
-        uint8_t* data1 = new uint8_t[payload1.size()];
-        std::memcpy(data1, payload1.data(), payload1.size());
-        states[1].data = data1;
-        states[1].data_len = payload1.size();
-
-        // Account
-        FfiAccount* account = new FfiAccount{};
-        account->actor_states = states;
-        account->actor_states_len = actor_count;
-
-        // Nonce = 42 as little-endian u128
-        std::memset(account->nonce.data, 0, sizeof(account->nonce.data));
-        account->nonce.data[0] = 42;
-
-        FfiOption_FfiAccount* opt = new FfiOption_FfiAccount;
-        opt.value = account;
-        opt.is_some = true;
-
-        res.value = opt;
-        res.error = FfiOperationError_Success;
-    } else {
-        res.value = nullptr;
-        res.error = FfiOperationError_InternalError;
-    }
-    
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
     return res;
 }
 
 void primitves_ffi_free_ffi_account_opt(FfiOption_FfiAccount *val) {
     LOGOS_CMOCK_RECORD("primitves_ffi_free_ffi_account_opt");
-    if (val.is_some && val.value) {
-        FfiAccount* account = val.value;
-
-        if (account->actor_states) {
-            for (uintptr_t i = 0; i < account->actor_states_len; ++i) {
-                delete[] account->actor_states[i].data;   
-            }
-            delete[] account->actor_states;                
-        }
-
-        delete account;                                    
-    }
-
-    val.value = nullptr;
-    val.is_some = false;
 }
 
 PointerResult_FfiBlockOpt__FfiOperationError sequencer_ffi_query_block(const SequencerServiceFFI *sequencer,
