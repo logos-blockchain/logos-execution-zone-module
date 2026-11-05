@@ -640,14 +640,15 @@ LEZCoreModule::~LEZCoreModule() {
         wallet_ffi_destroy(walletHandle);
         walletHandle = nullptr;
     }
+
+    if (sequencerHandle) {
+        sequencer_ffi_stop_sequencer(sequencerHandle);
+        sequencerHandle = nullptr;
+    }
 }
 
 std::string LEZCoreModule::name() const {
     return "lez_core";
-}
-
-std::string LEZCoreModule::version() const {
-    return "0.6.0";
 }
 
 // === Persistent locations ===
@@ -655,7 +656,6 @@ std::string LEZCoreModule::version() const {
 std::string LEZCoreModule::wallet_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
         return LEZ_NO_WALLET_DIR;
-    return instancePersistencePath();
 
     namespace fs = std::filesystem;
     const fs::path dir = fs::path(instancePersistencePath()) / "wallet";
@@ -671,7 +671,6 @@ std::string LEZCoreModule::wallet_dir() {
 std::string LEZCoreModule::sequencer_dir() {
     if (!isContextReady() || instancePersistencePath().empty())
         return LEZ_NO_WALLET_DIR;
-    return instancePersistencePath();
 
     namespace fs = std::filesystem;
     const fs::path dir = fs::path(instancePersistencePath()) / "sequencer";
@@ -1332,7 +1331,7 @@ int64_t LEZCoreModule::start_sequencer(
         );
     if (!start_result.value) {
         fprintf(stderr, "start_sequencer: sequencer_ffi_start_sequencer returned null\n");
-        return {};
+        return start_result.error;
     }
 
     sequencerHandle = start_result.value;
@@ -1347,6 +1346,8 @@ int64_t LEZCoreModule::stop_sequencer() {
     }
 
     FfiOperationError stop_result = sequencer_ffi_stop_sequencer(sequencerHandle);
+
+    sequencerHandle = nullptr;
 
     return stop_result;
 }
@@ -1411,8 +1412,8 @@ int64_t LEZCoreModule::open(
     }
 
     FfiOperationError error = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), sequencerHandle, password.c_str(), &walletHandle);
-    if (!walletHandle) {
-        fprintf(stderr, "open: wallet_ffi_open returned null\n");
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "open: wallet_ffi_open FFI error %d\n", error);
         return error;
     }
 
