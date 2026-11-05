@@ -1316,15 +1316,15 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
 
     char* end = nullptr;
     const uint64_t parsedLimit = std::strtoull(limit.c_str(), &end, 10);
+    if (end == limit.c_str() || *end != '\0') {
+        fprintf(stderr, "getBlocks failed : invalid limit \n");
+        return {};
+    }
     if (parsedLimit == 0) {
         // No need to call sequencer if limit is zero.
         return "[]";
     }
     const uint64_t limitNum = parsedLimit > 0 ? parsedLimit - 1 : 0;
-    if (end == limit.c_str() || *end != '\0') {
-        fprintf(stderr, "getBlocks failed : invalid limit \n");
-        return {};
-    }
 
     // `before` is the optional pagination cursor: an empty string means "from
     // the tip", a non-empty value that fails to parse is an error. `beforeVal`
