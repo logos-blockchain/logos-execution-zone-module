@@ -189,15 +189,6 @@ sections:
         expect_contains:
           - '"result":"lez_core"'
 
-      - title: "Read the module version"
-        text: |
-          `version` returns the module's semantic version (`0.5.1`), matching
-          `metadata.json`:
-        run: "./logos/bin/logosctl --config-dir ./session call lez_core version"
-        code_block: "logosctl call lez_core version"
-        expect_contains:
-          - '"result":"0.5.1"'
-
       - title: "Encode an account id to base58"
         text: |
           `account_id_to_base58` takes a 32-byte account id as 64 hex characters

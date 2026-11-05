@@ -3,7 +3,7 @@ project(LEZCoreTests LANGUAGES CXX)
 
 include(LogosTest)
 
-# Unit tests (mocked wallet_ffi)
+# Unit tests (mocked core_ffi)
 
 logos_test(
     NAME lez_core_module_tests
@@ -13,7 +13,7 @@ logos_test(
         main.cpp
         test_lez_core.cpp
     MOCK_C_SOURCES
-        mocks/mock_wallet_ffi.cpp
+        mocks/mock_core_ffi.cpp
     EXTRA_INCLUDES
         stubs
 )
@@ -21,15 +21,15 @@ logos_test(
 # The module targets C++20 (uses __uint128_t); LogosTest.cmake defaults to C++17.
 set_target_properties(lez_core_module_tests PROPERTIES CXX_STANDARD 20)
 
-# Integration tests (real wallet_ffi library)
+# Integration tests (real core_ffi library)
 
-find_library(WALLET_FFI_PATH
-    NAMES wallet_ffi libwallet_ffi wallet libwallet
+find_library(CORE_FFI_PATH
+    NAMES core_ffi libcore_ffi core libcore
     PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../lib
     NO_DEFAULT_PATH)
 
-if(WALLET_FFI_PATH)
-    message(STATUS "[LEZCoreTests] wallet_ffi found: ${WALLET_FFI_PATH} - building integration tests")
+if(CORE_FFI_PATH)
+    message(STATUS "[LEZCoreTests] core_ffi found: ${CORE_FFI_PATH} - building integration tests")
 
     logos_test(
         NAME lez_core_module_integration_tests
@@ -41,15 +41,15 @@ if(WALLET_FFI_PATH)
         EXTRA_INCLUDES
             ../lib
         EXTRA_LINK_LIBS
-            ${WALLET_FFI_PATH}
+            ${CORE_FFI_PATH}
     )
 
     set_target_properties(lez_core_module_integration_tests PROPERTIES CXX_STANDARD 20)
 
-    get_filename_component(WALLET_FFI_DIR "${WALLET_FFI_PATH}" DIRECTORY)
+    get_filename_component(CORE_FFI_DIR "${CORE_FFI_PATH}" DIRECTORY)
     set_target_properties(lez_core_module_integration_tests PROPERTIES
-        BUILD_RPATH "${WALLET_FFI_DIR}"
+        BUILD_RPATH "${CORE_FFI_DIR}"
     )
 else()
-    message(STATUS "[LEZCoreTests] wallet_ffi not found in ../lib - skipping integration tests")
+    message(STATUS "[LEZCoreTests] core_ffi not found in ../lib - skipping integration tests")
 endif()

@@ -1,30 +1,27 @@
-// Mock implementation of the wallet_ffi C functions.
-// Replaces the real lssa wallet library at link time during unit tests.
+// Mock implementation of the core_ffi C functions.
+// Replaces the real lssa core library at link time during unit tests.
 // Return codes and out-parameter contents are controlled via LogosCMockStore.
 //
 // Conventions:
-//  - Functions returning WalletFfiError use LOGOS_CMOCK_RETURN(int, "<fn>"); an
-//    unset mock defaults to 0 (SUCCESS), so the happy path needs no setup.
+//  - Functions returning FfiOperationError use LOGOS_CMOCK_RETURN(int, "<fn>"); an
+//    unset mock defaults to 0 (FfiOperationError_Success), so the happy path needs no setup.
 //  - Out-parameters are filled with deterministic bytes only on success so tests
 //    can assert on the resulting hex/JSON.
 
 #include <logos_clib_mock.h>
 
 extern "C" {
-#include <wallet_ffi.h>
+#include <core_ffi.h>
 }
 
-#include "mock_wallet_ffi_capture.h"
+#include "mock_core_ffi_capture.h"
 
 #include <cstdlib>
 #include <cstring>
 
 namespace MockWalletFfiCapture {
-uint8_t lastTransferShieldedIdentifier[32] = {0};
-uint8_t lastTransferPrivateIdentifier[32] = {0};
 std::vector<FfiAccountMention> lastMentions;
 std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
-FfiBytes32 lastSelfAccountId{};
 std::vector<FfiDependency> lastPrograms;
 } // namespace MockWalletFfiCapture
 
@@ -32,12 +29,13 @@ namespace {
 
 // A single non-null sentinel handle handed back by create_new / open.
 char g_fakeWallet = 0;
+char g_fakeSequencer = 0;
 
 // Backing storage for list_accounts (returned by pointer to the caller).
 FfiAccountListEntry g_accountEntries[8];
 
 // Fill a transfer result based on the mocked error code for `key`.
-WalletFfiError fillTransferResult(const char* key, FfiTransferResult* out_result) {
+FfiOperationError fillTransferResult(const char* key, FfiTransferResult* out_result) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (out_result) {
         out_result->success = (err == 0);
@@ -49,7 +47,7 @@ WalletFfiError fillTransferResult(const char* key, FfiTransferResult* out_result
             out_result->tx_hash = nullptr;
         }
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
 } // namespace
@@ -58,7 +56,7 @@ extern "C" {
 
 // === Lifecycle ===
 
-FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char*) {
+FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char*, const SequencerServiceFFI*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_create_new");
     const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_create_new");
     const char* mnemonic_ok = LOGOS_CMOCK_RETURN_STRING("wallet_ffi_create_new");
@@ -69,52 +67,75 @@ FfiCreateWalletOutput wallet_ffi_create_new(const char*, const char*, const char
     return output;
 }
 
-WalletHandle* wallet_ffi_open(const char*, const char*) {
+FfiOperationError wallet_ffi_open(const char*, const char*, const SequencerServiceFFI*, const char*, WalletHandle** out_handle) {
     LOGOS_CMOCK_RECORD("wallet_ffi_open");
-    const int ok = LOGOS_CMOCK_RETURN(int, "wallet_ffi_open");
-    return ok ? reinterpret_cast<WalletHandle*>(&g_fakeWallet) : nullptr;
+    const int rc = LOGOS_CMOCK_RETURN(int, "wallet_ffi_open");
+    const auto err = static_cast<FfiOperationError>(rc);
+    if (err == FfiOperationError_Success && out_handle) {
+        *out_handle = reinterpret_cast<WalletHandle*>(&g_fakeWallet);
+    }
+    return err;
 }
 
-WalletFfiError wallet_ffi_save(WalletHandle*) {
+FfiOperationError wallet_ffi_save(WalletHandle*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_save");
-    return static_cast<WalletFfiError>(LOGOS_CMOCK_RETURN(int, "wallet_ffi_save"));
+    return static_cast<FfiOperationError>(LOGOS_CMOCK_RETURN(int, "wallet_ffi_save"));
 }
 
 void wallet_ffi_destroy(WalletHandle*) {
     LOGOS_CMOCK_RECORD("wallet_ffi_destroy");
 }
 
-WalletFfiError wallet_ffi_restore_data(WalletHandle*, const char*, const char*, uint32_t) {
+FfiOperationError wallet_ffi_restore_data(WalletHandle*, const char*, uint32_t) {
     LOGOS_CMOCK_RECORD("wallet_ffi_restore_data");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_restore_data");
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
+}
+
+InitializedSequencerServiceFFIResult sequencer_ffi_start_sequencer(const Runtime *runtime,
+                                                                   const char *config_path) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_start_sequencer");
+    const int ok = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_start_sequencer");
+    InitializedSequencerServiceFFIResult res;
+    res.error = static_cast<FfiOperationError>(ok);
+    res.value = ok ? reinterpret_cast<SequencerServiceFFI*>(&g_fakeSequencer) : nullptr;
+    return res;
+}
+
+FfiOperationError sequencer_ffi_stop_sequencer(SequencerServiceFFI *sequencer) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_stop_sequencer");
+    return static_cast<FfiOperationError>(LOGOS_CMOCK_RETURN(int, "sequencer_ffi_stop_sequencer"));
+}
+
+void sequencer_ffi_init_logger(const char *level) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_init_logger");
 }
 
 // === Account management ===
 
-WalletFfiError wallet_ffi_create_account_public(WalletHandle*, FfiBytes32* out_id) {
+FfiOperationError wallet_ffi_create_account_public(WalletHandle*, FfiBytes32* out_id) {
     LOGOS_CMOCK_RECORD("wallet_ffi_create_account_public");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_create_account_public");
     if (err == 0 && out_id) {
         memset(out_id->data, 0xAB, sizeof(out_id->data));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-WalletFfiError wallet_ffi_create_account_private(WalletHandle*, FfiBytes32* out_id) {
+FfiOperationError wallet_ffi_create_account_private(WalletHandle*, FfiBytes32* out_id) {
     LOGOS_CMOCK_RECORD("wallet_ffi_create_account_private");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_create_account_private");
     if (err == 0 && out_id) {
         memset(out_id->data, 0xCD, sizeof(out_id->data));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-WalletFfiError wallet_ffi_list_accounts(WalletHandle*, FfiAccountList* out_list) {
+FfiOperationError wallet_ffi_list_accounts(WalletHandle*, FfiAccountList* out_list) {
     LOGOS_CMOCK_RECORD("wallet_ffi_list_accounts");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_list_accounts");
     if (!out_list) {
-        return static_cast<WalletFfiError>(err);
+        return static_cast<FfiOperationError>(err);
     }
     if (err == 0) {
         int count = LOGOS_CMOCK_RETURN(int, "list_accounts_count");
@@ -130,7 +151,7 @@ WalletFfiError wallet_ffi_list_accounts(WalletHandle*, FfiAccountList* out_list)
         out_list->entries = nullptr;
         out_list->count = 0;
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
 void wallet_ffi_free_account_list(FfiAccountList* list) {
@@ -141,9 +162,48 @@ void wallet_ffi_free_account_list(FfiAccountList* list) {
     }
 }
 
+void primitives_ffi_free_private_account_keys(FfiPrivateAccountKeys *keys) {
+    LOGOS_CMOCK_RECORD("primitives_ffi_free_private_account_keys");
+}
+
+FfiOperationError wallet_ffi_make_private_account_keys_from_raw(FfiBytes32 nullifier_public_key,
+                                                                     const uint8_t *viewing_public_key,
+                                                                     uintptr_t viewing_public_key_len,
+                                                                     FfiPrivateAccountKeys *out_keys) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_make_private_account_keys_from_raw");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_make_private_account_keys_from_raw");
+    if (!out_keys) {
+        return static_cast<FfiOperationError>(err);
+    }
+    if (err == 0) {
+        int count = LOGOS_CMOCK_RETURN(int, "wallet_ffi_make_private_account_keys_from_raw");
+        FfiBytes32 npk{};
+        for (size_t i = 0; i < sizeof(npk.data); ++i) {
+            npk.data[i] = static_cast<uint8_t>(i + 1);
+        }
+            
+        auto* data = static_cast<uint8_t*>(std::malloc(1184));
+        for (size_t i = 0; i < 1184; ++i) {
+            data[i] = static_cast<uint8_t>((i * 7 + 3) & 0xFF);
+        }
+
+        out_keys->nullifier_public_key = npk;
+        out_keys->viewing_public_key.entries  = data;
+        out_keys->viewing_public_key.len      = 1184;
+        out_keys->viewing_public_key.capacity = 1184;
+    } else {
+        FfiBytes32 nullifier_public_key = {};
+        out_keys->nullifier_public_key = nullifier_public_key;
+        out_keys->viewing_public_key.entries = nullptr;
+        out_keys->viewing_public_key.len = 0;
+        out_keys->viewing_public_key.capacity = 0;
+    }
+    return static_cast<FfiOperationError>(err);
+}
+
 // === Account queries ===
 
-WalletFfiError wallet_ffi_get_balance(WalletHandle*, const FfiBytes32*, bool, uint8_t (*out_balance)[16]) {
+FfiOperationError wallet_ffi_get_balance(WalletHandle*, const FfiBytes32*, bool, uint8_t (*out_balance)[16]) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_balance");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_balance");
     if (err == 0 && out_balance) {
@@ -153,68 +213,66 @@ WalletFfiError wallet_ffi_get_balance(WalletHandle*, const FfiBytes32*, bool, ui
             (*out_balance)[i] = static_cast<uint8_t>((value >> (i * 8)) & 0xFF);
         }
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-static WalletFfiError fillProgram(const char* key, FfiProgram *ffi_program) {
+static FfiOperationError fillProgram(const char* key, FfiProgram *ffi_program) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (err == 0 && ffi_program) {
         memset(const_cast<uint8_t*>(ffi_program->elf_data), 0xAA, 100);
         ffi_program->elf_size = 100;
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-// One shard owned by program 0xAA..AA holding the bytes {0x07, 0x08}.
-static WalletFfiError fillAccount(const char* key, FfiAccount* out_account) {
+// One actor_state owned by program 0xAA..AA holding the bytes {0x07, 0x08}.
+static FfiOperationError fillAccount(const char* key, FfiAccount* out_account) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (err == 0 && out_account) {
-        auto* shard = static_cast<FfiShard*>(calloc(1, sizeof(FfiShard)));
-        memset(shard->program.data, 0xAA, sizeof(shard->program.data));
+        auto* actor_state = static_cast<FfiActorState*>(calloc(1, sizeof(FfiActorState)));
+        memset(actor_state->program.data, 0xAA, sizeof(actor_state->program.data));
         auto* data = static_cast<uint8_t*>(malloc(2));
         data[0] = 0x07;
         data[1] = 0x08;
-        shard->data = data;
-        shard->data_len = 2;
-        out_account->shards = shard;
-        out_account->shards_len = 1;
+        actor_state->data = data;
+        actor_state->data_len = 2;
+        out_account->actor_states = actor_state;
+        out_account->actor_states_len = 1;
         memset(out_account->nonce.data, 0, sizeof(out_account->nonce.data));
         out_account->nonce.data[0] = 0x01;
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-static WalletFfiError fillPublicAccountIdentity(const char* key, FfiAccountIdentity *out_account_identity) {
+static FfiOperationError fillPublicAccountIdentity(const char* key, FfiAccountIdentity *out_account_identity) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (err == 0 && out_account_identity) {
-        out_account_identity->kind = FfiAccountIdentityKind::PUBLIC;
+        out_account_identity->kind = FfiAccountIdentityKind::FfiAccountIdentityKind_Public;
         memset(out_account_identity->account_id.data, 0xAA, sizeof(out_account_identity->account_id));
         out_account_identity->key_path = nullptr;
         memset(out_account_identity->nullifier_secret_key.data, 0x00, sizeof(out_account_identity->nullifier_secret_key));
         memset(out_account_identity->nullifier_public_key.data, 0x00, sizeof(out_account_identity->nullifier_public_key));
         out_account_identity->viewing_public_key = nullptr;
         out_account_identity->viewing_public_key_len = 0;
-        memset(out_account_identity->identifier.data, 0x01, sizeof(out_account_identity->identifier));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-static WalletFfiError fillPrivateAccountIdentity(const char* key, FfiAccountIdentity *out_account_identity) {
+static FfiOperationError fillPrivateAccountIdentity(const char* key, FfiAccountIdentity *out_account_identity) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (err == 0 && out_account_identity) {
-        out_account_identity->kind = FfiAccountIdentityKind::PRIVATE_OWNED;
+        out_account_identity->kind = FfiAccountIdentityKind::FfiAccountIdentityKind_PrivateOwned;
         memset(out_account_identity->account_id.data, 0xAB, sizeof(out_account_identity->account_id));
         out_account_identity->key_path = nullptr;
         memset(out_account_identity->nullifier_secret_key.data, 0x11, sizeof(out_account_identity->nullifier_secret_key));
         memset(out_account_identity->nullifier_public_key.data, 0x22, sizeof(out_account_identity->nullifier_public_key));
         out_account_identity->viewing_public_key = nullptr;
         out_account_identity->viewing_public_key_len = 0;
-        memset(out_account_identity->identifier.data, 0x01, sizeof(out_account_identity->identifier));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-static WalletFfiError fillTransactionResult(const char* key, FfiTransactionResult *out_result) {
+static FfiOperationError fillTransactionResult(const char* key, FfiTransactionResult *out_result) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
     if (out_result) {
         out_result->success = (err == 0);
@@ -228,56 +286,58 @@ static WalletFfiError fillTransactionResult(const char* key, FfiTransactionResul
         out_result->secrets_data = nullptr;
         out_result->secrets_size = 0; 
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-WalletFfiError wallet_ffi_get_account_public(WalletHandle*, const FfiBytes32*, FfiAccount* out_account) {
+FfiOperationError wallet_ffi_get_account_public(WalletHandle*, const FfiBytes32*, FfiAccount* out_account) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_account_public");
     return fillAccount("wallet_ffi_get_account_public", out_account);
 }
 
-WalletFfiError wallet_ffi_get_account_private(WalletHandle*, const FfiBytes32*, FfiAccount* out_account) {
+FfiOperationError wallet_ffi_get_account_private(WalletHandle*, const FfiBytes32*, FfiAccount* out_account) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_account_private");
     return fillAccount("wallet_ffi_get_account_private", out_account);
 }
 
 void wallet_ffi_free_account_data(FfiAccount* account) {
     LOGOS_CMOCK_RECORD("wallet_ffi_free_account_data");
-    if (account && account->shards) {
-        for (uintptr_t i = 0; i < account->shards_len; ++i)
-            free(const_cast<uint8_t*>(account->shards[i].data));
-        free(const_cast<FfiShard*>(account->shards));
-        account->shards = nullptr;
-        account->shards_len = 0;
+    if (account && account->actor_states) {
+        for (uintptr_t i = 0; i < account->actor_states_len; ++i)
+            free(const_cast<uint8_t*>(account->actor_states[i].data));
+        free(const_cast<FfiActorState*>(account->actor_states));
+        account->actor_states = nullptr;
+        account->actor_states_len = 0;
     }
 }
 
-WalletFfiError wallet_ffi_get_public_account_key(WalletHandle*, const FfiBytes32*, FfiPublicAccountKey* out_key) {
+FfiOperationError wallet_ffi_get_public_account_key(WalletHandle*, const FfiBytes32*, FfiPublicAccountKey* out_key) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_public_account_key");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_public_account_key");
     if (err == 0 && out_key) {
         memset(out_key->public_key.data, 0xBE, sizeof(out_key->public_key.data));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-WalletFfiError wallet_ffi_get_private_account_keys(WalletHandle*, const FfiBytes32*, FfiPrivateAccountKeys* out_keys) {
+FfiOperationError wallet_ffi_get_private_account_keys(WalletHandle*, const FfiBytes32*, FfiPrivateAccountKeys* out_keys) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_private_account_keys");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_private_account_keys");
     if (err == 0 && out_keys) {
         memset(out_keys->nullifier_public_key.data, 0xEF, sizeof(out_keys->nullifier_public_key.data));
-        out_keys->viewing_public_key = nullptr;
-        out_keys->viewing_public_key_len = 0;
+        out_keys->viewing_public_key.entries = nullptr;
+        out_keys->viewing_public_key.len = 0;
+        out_keys->viewing_public_key.capacity = 0;
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
 void wallet_ffi_free_private_account_keys(FfiPrivateAccountKeys* keys) {
     LOGOS_CMOCK_RECORD("wallet_ffi_free_private_account_keys");
-    if (keys && keys->viewing_public_key) {
-        free(const_cast<uint8_t*>(keys->viewing_public_key));
-        keys->viewing_public_key = nullptr;
-        keys->viewing_public_key_len = 0;
+    if (keys && keys->viewing_public_key.entries) {
+        free(const_cast<uint8_t*>(keys->viewing_public_key.entries));
+        keys->viewing_public_key.entries = nullptr;
+        keys->viewing_public_key.len = 0;
+        keys->viewing_public_key.capacity = 0;
     }
 }
 
@@ -289,17 +349,17 @@ char* wallet_ffi_account_id_to_base58(const FfiBytes32*) {
     return strdup((str && *str) ? str : "MockBase58Address");
 }
 
-WalletFfiError wallet_ffi_account_id_from_base58(const char*, FfiBytes32* out_id) {
+FfiOperationError wallet_ffi_account_id_from_base58(const char*, FfiBytes32* out_id) {
     LOGOS_CMOCK_RECORD("wallet_ffi_account_id_from_base58");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_account_id_from_base58");
     if (err == 0 && out_id) {
         memset(out_id->data, 0x5A, sizeof(out_id->data));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-void wallet_ffi_free_string(char* s) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_free_string");
+void primitives_ffi_free_cstring(char* s) {
+    LOGOS_CMOCK_RECORD("primitives_ffi_free_cstring");
     if (s) {
         free(s);
     }
@@ -307,66 +367,60 @@ void wallet_ffi_free_string(char* s) {
 
 // === Blockchain synchronisation ===
 
-WalletFfiError wallet_ffi_sync_to_block(WalletHandle*, uint64_t) {
+FfiOperationError wallet_ffi_sync_to_block(WalletHandle*, uint64_t) {
     LOGOS_CMOCK_RECORD("wallet_ffi_sync_to_block");
-    return static_cast<WalletFfiError>(LOGOS_CMOCK_RETURN(int, "wallet_ffi_sync_to_block"));
+    return static_cast<FfiOperationError>(LOGOS_CMOCK_RETURN(int, "wallet_ffi_sync_to_block"));
 }
 
-WalletFfiError wallet_ffi_get_last_synced_block(WalletHandle*, uint64_t* out_block_id) {
+FfiOperationError wallet_ffi_get_last_synced_block(WalletHandle*, uint64_t* out_block_id) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_last_synced_block");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_last_synced_block");
     if (err == 0 && out_block_id) {
         *out_block_id = static_cast<uint64_t>(LOGOS_CMOCK_RETURN(int, "last_synced_block_value"));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
-WalletFfiError wallet_ffi_get_current_block_height(WalletHandle*, uint64_t* out_block_height) {
+FfiOperationError wallet_ffi_get_current_block_height(WalletHandle*, uint64_t* out_block_height) {
     LOGOS_CMOCK_RECORD("wallet_ffi_get_current_block_height");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_current_block_height");
     if (err == 0 && out_block_height) {
         *out_block_height = static_cast<uint64_t>(LOGOS_CMOCK_RETURN(int, "current_block_height_value"));
     }
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
 // === Transfers / registration ===
 
-WalletFfiError wallet_ffi_transfer_public(
+FfiOperationError wallet_ffi_transfer_public(
     WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_public");
     return fillTransferResult("wallet_ffi_transfer_public", out_result);
 }
 
-WalletFfiError wallet_ffi_transfer_shielded(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiIdentifier* identifier,
+FfiOperationError wallet_ffi_transfer_shielded(
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*,
     const uint8_t (*)[16],
     const char*,
     FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_shielded");
-    if (identifier) {
-        memcpy(MockWalletFfiCapture::lastTransferShieldedIdentifier, identifier->data, 32);
-    }
     return fillTransferResult("wallet_ffi_transfer_shielded", out_result);
 }
 
-WalletFfiError wallet_ffi_transfer_deshielded(
+FfiOperationError wallet_ffi_transfer_deshielded(
     WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_deshielded");
     return fillTransferResult("wallet_ffi_transfer_deshielded", out_result);
 }
 
-WalletFfiError wallet_ffi_transfer_private(
-    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*, const FfiIdentifier* identifier,
+FfiOperationError wallet_ffi_transfer_private(
+    WalletHandle*, const FfiBytes32*, const FfiPrivateAccountKeys*,
     const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_private");
-    if (identifier) {
-        memcpy(MockWalletFfiCapture::lastTransferPrivateIdentifier, identifier->data, 32);
-    }
     return fillTransferResult("wallet_ffi_transfer_private", out_result);
 }
 
-WalletFfiError wallet_ffi_transfer_shielded_owned(
+FfiOperationError wallet_ffi_transfer_shielded_owned(
     WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16],
     const char *,
     FfiTransferResult* out_result) {
@@ -374,7 +428,7 @@ WalletFfiError wallet_ffi_transfer_shielded_owned(
     return fillTransferResult("wallet_ffi_transfer_shielded_owned", out_result);
 }
 
-WalletFfiError wallet_ffi_transfer_private_owned(
+FfiOperationError wallet_ffi_transfer_private_owned(
     WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_private_owned");
     return fillTransferResult("wallet_ffi_transfer_private_owned", out_result);
@@ -388,16 +442,16 @@ void wallet_ffi_free_transfer_result(FfiTransferResult* result) {
     }
 }
 
-WalletFfiError wallet_ffi_resolve_public_account(FfiBytes32 account_id, bool needs_sign, FfiAccountIdentity *out_account_identity) {
+FfiOperationError wallet_ffi_resolve_public_account(FfiBytes32 account_id, bool needs_sign, FfiAccountIdentity *out_account_identity) {
     LOGOS_CMOCK_RECORD("wallet_ffi_resolve_public_account");
-    const WalletFfiError err = fillPublicAccountIdentity("wallet_ffi_resolve_public_account", out_account_identity);
+    const FfiOperationError err = fillPublicAccountIdentity("wallet_ffi_resolve_public_account", out_account_identity);
     // As the real resolver does: an account that need not sign is mentioned as PublicNoSign.
-    if (err == SUCCESS && out_account_identity && !needs_sign)
-        out_account_identity->kind = FfiAccountIdentityKind::PUBLIC_NO_SIGN;
+    if (err == FfiOperationError_Success && out_account_identity && !needs_sign)
+        out_account_identity->kind = FfiAccountIdentityKind::FfiAccountIdentityKind_PublicNoSign;
     return err;
 }
 
-WalletFfiError wallet_ffi_resolve_private_account(WalletHandle *handle, FfiBytes32 account_id, FfiAccountIdentity *out_account_identity){
+FfiOperationError wallet_ffi_resolve_private_account(WalletHandle *handle, FfiBytes32 account_id, FfiAccountIdentity *out_account_identity){
     LOGOS_CMOCK_RECORD("wallet_ffi_resolve_private_account");
     return fillPrivateAccountIdentity("wallet_ffi_resolve_private_account", out_account_identity);
 }
@@ -428,17 +482,17 @@ void wallet_ffi_free_ffi_program(FfiProgram *ffi_program) {
     }
 }
 
-WalletFfiError wallet_ffi_send_generic_public_transaction(WalletHandle *handle, const FfiAccountMention *account_mentions,
-uintptr_t account_mentions_size, const uint8_t *instruction_data, uintptr_t instruction_data_size,
-FfiBytes32 program_account_id, const FfiBytes32 *payer, FfiTransactionResult *out_result) {
+FfiOperationError wallet_ffi_send_generic_public_transaction(WalletHandle *handle, const FfiAccountMention *account_mentions,
+uintptr_t account_mentions_size, uintptr_t root_mention, const uint8_t *message, uintptr_t message_size,
+const FfiBytes32 *payer, FfiTransactionResult *out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_public_transaction");
     MockWalletFfiCapture::lastMentions.assign(account_mentions, account_mentions + account_mentions_size);
     return fillTransactionResult("wallet_ffi_send_generic_public_transaction", out_result);
 }
 
-WalletFfiError wallet_ffi_send_generic_private_transaction(WalletHandle *handle, const FfiAccountMention *account_mentions,
-uintptr_t account_mentions_size, const uint8_t *instruction_data, uintptr_t instruction_data_size,
-const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResult *out_result){
+FfiOperationError wallet_ffi_send_generic_private_transaction(WalletHandle *handle, const FfiAccountMention *account_mentions,
+uintptr_t account_mentions_size, uintptr_t root_mention, const uint8_t *message, uintptr_t message_size,
+const FfiProgramCatalog *programs, FfiTransactionResult *out_result){
     LOGOS_CMOCK_RECORD("wallet_ffi_send_generic_private_transaction");
     MockWalletFfiCapture::lastMentions.assign(account_mentions, account_mentions + account_mentions_size);
     MockWalletFfiCapture::lastViewingPublicKeys.clear();
@@ -447,29 +501,28 @@ const FfiProgramWithDependencies *program_with_dependencies, FfiTransactionResul
         MockWalletFfiCapture::lastViewingPublicKeys.emplace_back(
             identity.viewing_public_key, identity.viewing_public_key + identity.viewing_public_key_len);
     }
-    MockWalletFfiCapture::lastSelfAccountId = program_with_dependencies->self_account_id;
     MockWalletFfiCapture::lastPrograms.assign(
-        program_with_dependencies->programs, program_with_dependencies->programs + program_with_dependencies->programs_size);
+        programs->programs, programs->programs + programs->programs_size);
     return fillTransactionResult("wallet_ffi_send_generic_private_transaction", out_result);
 }    
 
-WalletFfiError wallet_ffi_program_loader_deploy(WalletHandle*, const FfiBytes32*, const FfiBytes32*, uintptr_t,
+FfiOperationError wallet_ffi_program_loader_deploy(WalletHandle*, const FfiBytes32*, const FfiBytes32*, uintptr_t,
                                                 const uint8_t*, uintptr_t, bool, const FfiBytes32*,
                                                 FfiTransactionResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_program_loader_deploy");
     return fillTransactionResult("wallet_ffi_program_loader_deploy", out_result);
 }
 
-WalletFfiError wallet_ffi_poll_transaction_status(WalletHandle *handle, FfiBytes32 tx_hash, bool *transaction_status) {
+FfiOperationError wallet_ffi_poll_transaction_status(WalletHandle *handle, FfiBytes32 tx_hash, bool *transaction_status) {
     LOGOS_CMOCK_RECORD("wallet_ffi_poll_transaction_status");
     const int err = LogosCMockStore::instance().getReturn<int>("wallet_ffi_poll_transaction_status");
     *transaction_status = (err == 0);
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
 // === Bridge (L1 Bedrock <-> L2) ===
 
-WalletFfiError wallet_ffi_bridge_withdraw(
+FfiOperationError wallet_ffi_bridge_withdraw(
     WalletHandle*, const FfiBytes32*, uint64_t, const FfiBytes32*, FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_bridge_withdraw");
     return fillTransferResult("wallet_ffi_bridge_withdraw", out_result);
@@ -497,15 +550,15 @@ LabelAvailability wallet_ffi_check_label_available(WalletHandle *handle, const c
         label_availablility.is_available = false;
     }
 
-    label_availablility.error = static_cast<WalletFfiError>(err);
+    label_availablility.error = static_cast<FfiOperationError>(err);
 
     return label_availablility;
 } 
 
-WalletFfiError wallet_ffi_add_label(WalletHandle *handle, const char *label, FfiAccountIdWithPrivacy account_id_with_privacy) {
+FfiOperationError wallet_ffi_add_label(WalletHandle *handle, const char *label, FfiAccountIdWithPrivacy account_id_with_privacy) {
     LOGOS_CMOCK_RECORD("wallet_ffi_add_label");
     const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_add_label");
-    return static_cast<WalletFfiError>(err);
+    return static_cast<FfiOperationError>(err);
 }
 
 AccountIdResolvedFromLabel wallet_ffi_resolve_label(WalletHandle *handle, const char *label) {
@@ -524,7 +577,7 @@ AccountIdResolvedFromLabel wallet_ffi_resolve_label(WalletHandle *handle, const 
     acc_id_with_privacy.is_private = false;
 
     acc_id_res.account_id = acc_id_with_privacy;
-    acc_id_res.error = static_cast<WalletFfiError>(err);
+    acc_id_res.error = static_cast<FfiOperationError>(err);
 
     return acc_id_res;
 }
@@ -545,12 +598,12 @@ LabelList wallet_ffi_get_all_labels_for_account(WalletHandle *handle, FfiAccount
         label_list.labels_size = 0;
     }
 
-    label_list.error = static_cast<WalletFfiError>(err);
+    label_list.error = static_cast<FfiOperationError>(err);
 
     return label_list;
 }
 
-WalletFfiError wallet_ffi_free_label_list(LabelList *label_list) {
+FfiOperationError wallet_ffi_free_label_list(LabelList *label_list) {
     LOGOS_CMOCK_RECORD("wallet_ffi_free_label_list");
     if (label_list && label_list->labels_data) {
         free(const_cast<char**>(label_list->labels_data));
