@@ -302,10 +302,6 @@ LEZCoreModule::~LEZCoreModule() {
     }
 }
 
-std::string LEZCoreModule::name() const {
-    return "lez_core";
-}
-
 // === Persistent locations ===
 
 std::string LEZCoreModule::wallet_dir() {
@@ -1315,11 +1311,11 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
 
     char* end = nullptr;
     const uint64_t parsedLimit = std::strtoull(limit.c_str(), &end, 10);
-    const uint64_t limitNum = parsedLimit > 0 ? parsedLimit - 1 : 0;
-    if (limitNum == 0) {
+    if (parsedLimit == 0) {
         // No need to call sequencer if limit is zero.
-        return {};
+        return "[]";
     }
+    const uint64_t limitNum = parsedLimit > 0 ? parsedLimit - 1 : 0;
     if (end == limit.c_str() || *end != '\0') {
         fprintf(stderr, "getBlocks failed : invalid limit \n");
         return {};
@@ -1337,9 +1333,11 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
             fprintf(stderr, "getBlocks failed : invalid before \n");
             return {};
         }
-        if (beforeVal < std::numeric_limits<uint64_t>::max()) {
-            ++beforeVal;
+        if (beforeVal == 0) {
+            // Can not get blocks before zero block.
+            return "[]";
         }
+        --beforeVal;
         hasBefore = true;
     }    
     FfiOption_u64 beforeOpt;
