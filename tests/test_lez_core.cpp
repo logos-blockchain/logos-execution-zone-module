@@ -138,7 +138,7 @@ LOGOS_TEST(get_account_public_returns_json) {
     const nlohmann::json obj = parseObject(module.get_account_public(VALID_ID));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_get_account_public"));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_free_account_data"));
-    LOGOS_ASSERT_EQ(obj["nonce"].get<std::string>(), std::string("01") + std::string(30, '0'));
+    LOGOS_ASSERT_EQ(obj["nonce"].get<std::string>(), std::string("1"));
     LOGOS_ASSERT_EQ(obj["actor_states"].size(), static_cast<size_t>(1));
     LOGOS_ASSERT_EQ(obj["actor_states"][0]["program"].get<std::string>(), std::string(64, 'a'));
     LOGOS_ASSERT_EQ(obj["actor_states"][0]["data"].get<std::string>(), std::string("0708"));

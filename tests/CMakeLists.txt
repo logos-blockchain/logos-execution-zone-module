@@ -9,6 +9,7 @@ logos_test(
     NAME lez_core_module_tests
     MODULE_SOURCES
         ../src/lez_core_module.cpp
+        ../src/lez_core_ffi_marshalling.cpp
     TEST_SOURCES
         main.cpp
         test_lez_core.cpp
@@ -16,6 +17,7 @@ logos_test(
         mocks/mock_core_ffi.cpp
     EXTRA_INCLUDES
         stubs
+        ../src
 )
 
 # The module targets C++20 (uses __uint128_t); LogosTest.cmake defaults to C++17.
@@ -35,11 +37,13 @@ if(CORE_FFI_PATH)
         NAME lez_core_module_integration_tests
         MODULE_SOURCES
             ../src/lez_core_module.cpp
+            ../src/lez_core_ffi_marshalling.cpp
         TEST_SOURCES
             main.cpp
             test_lez_core_integration.cpp
         EXTRA_INCLUDES
             ../lib
+            ../src
         EXTRA_LINK_LIBS
             ${CORE_FFI_PATH}
     )
