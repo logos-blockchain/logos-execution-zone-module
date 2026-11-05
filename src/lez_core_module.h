@@ -36,7 +36,6 @@ public:
     LEZCoreModule(const LEZCoreModule&) = delete;
     LEZCoreModule& operator=(const LEZCoreModule&) = delete;
 
-    std::string name() const;
     std::string wallet_dir();
     std::string sequencer_dir();
 
