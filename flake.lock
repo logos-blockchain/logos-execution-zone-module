@@ -476,6 +476,7 @@
       "original": {
         "owner": "logos-co",
         "repo": "logos-module-builder",
+        "rev": "5f74cdb3cecacde054c68d72fcc0d2cfe2195900",
         "type": "github"
       }
     },
@@ -1737,6 +1738,7 @@
       "original": {
         "owner": "logos-co",
         "repo": "nix-bundle-lgx",
+        "rev": "e65d38263f2e1e6bca274d676684350b0fb54185",
         "type": "github"
       }
     },
