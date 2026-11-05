@@ -434,7 +434,7 @@ namespace marshalling {
     // Builds JSON { nonce, actor_states: [{ program, data }] }.
     nlohmann::json ffiAccountToJson(const FfiAccount& account) {
         nlohmann::json obj = nlohmann::json::object();
-        obj[JsonKeys::Nonce] = bytesToHex(account.nonce.data, 16);
+        obj[JsonKeys::Nonce] = u128LeToDecimal(account.nonce.data);
         nlohmann::json actor_states = nlohmann::json::array();
         for (uintptr_t i = 0; account.actor_states && i < account.actor_states_len; ++i) {
             const FfiActorState& actor_state = account.actor_states[i];

@@ -10,18 +10,18 @@
 // Bridge the raw C structs returned by the core FFI (core_ffi.h) to the
 // compact JSON the LEZ explorer's Block/Transaction/Account models consume, and
 // parse the std::string inputs back into FFI types. Kept in their own
-// translation unit so lez_core_module_impl.cpp stays focused on the query
+// translation unit so lez_core_module.cpp stays focused on the query
 // flow and the JSON data model lives in one place.
 //
 // This header pulls in the FFI types + nlohmann::json, so it is included only
-// from .cpp files — NOT from lez_core_module_impl.h, whose Qt-free,
+// from .cpp files — NOT from lez_core_module.h, whose Qt-free,
 // FFI-free shape the universal codegen parses.
 //
 // These never take ownership of FFI memory: the caller frees it with the
 // matching primitives_free_ffi_* function AFTER marshalling.
 //
 // Large 64-bit values (ids, timestamps, validity windows) and 128-bit values
-// (balances, nonces) are emitted as decimal STRINGS to avoid the double-
+// (nonces) are emitted as decimal STRINGS to avoid the double-
 // precision loss of JSON numbers; counts/sizes are emitted as numbers.
 namespace marshalling {
 

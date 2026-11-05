@@ -306,10 +306,6 @@ std::string LEZCoreModule::name() const {
     return "lez_core";
 }
 
-std::string LEZCoreModule::version() const {
-    return "0.6.1";
-}
-
 // === Persistent locations ===
 
 std::string LEZCoreModule::wallet_dir() {
@@ -1318,7 +1314,12 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
     }
 
     char* end = nullptr;
-    const uint64_t limitNum = std::strtoull(limit.c_str(), &end, 10);
+    const uint64_t parsedLimit = std::strtoull(limit.c_str(), &end, 10);
+    const uint64_t limitNum = parsedLimit > 0 ? parsedLimit - 1 : 0;
+    if (limitNum == 0) {
+        // No need to call sequencer if limit is zero.
+        return {};
+    }
     if (end == limit.c_str() || *end != '\0') {
         fprintf(stderr, "getBlocks failed : invalid limit \n");
         return {};
@@ -1336,8 +1337,11 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
             fprintf(stderr, "getBlocks failed : invalid before \n");
             return {};
         }
+        if (beforeVal < std::numeric_limits<uint64_t>::max()) {
+            ++beforeVal;
+        }
         hasBefore = true;
-    }
+    }    
     FfiOption_u64 beforeOpt;
     beforeOpt.is_some = hasBefore;
     beforeOpt.value = hasBefore ? &beforeVal : nullptr;
@@ -1350,8 +1354,8 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
     }
 
     nlohmann::json arr = nlohmann::json::array();
-    for (uintptr_t i = 0; i < res.value->len; ++i) {
-        arr.push_back(ffiBlockToJson(res.value->entries[i]));
+    for (uintptr_t i = res.value->len; i > 0; --i) {
+        arr.push_back(ffiBlockToJson(res.value->entries[i - 1]));
     }
     primitives_ffi_free_ffi_block_vec(res.value);
     return jsonToCompactString(arr);
@@ -1388,8 +1392,8 @@ std::string LEZCoreModule::getStatus() {
     }
 
     primitives_ffi_free_cstring(json);
-    // TODO: Not implemented yet. Return json string whem implemented.
-    return "Syncing";
+    // TODO: Not implemented yet. Return json string when implemented.
+    return "Not supported";
 }
 
 std::string LEZCoreModule::getTransactionsByAccount(
