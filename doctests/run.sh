@@ -4,7 +4,7 @@
 #
 # There is one spec:
 #   logos-execution-zone-runtime.test.yaml — packages this module as an .lgx,
-#       installs it with lgpm, and drives it through a headless logoscore daemon,
+#       installs it into a logosctl session, and drives it through the daemon,
 #       calling its wallet-free methods (name/version and the base58 account-id
 #       codec) and asserting on the output.
 #
