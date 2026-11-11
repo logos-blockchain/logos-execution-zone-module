@@ -9,6 +9,7 @@
 #include <memory>
 #include <random>
 #include <vector>
+#include <fstream>
 
 #include <nlohmann/json.hpp>
 
@@ -1050,6 +1051,61 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, uint64_t dep
     }
 
     return FfiOperationError_Success;
+}
+
+int64_t LEZCoreModule::reset_storage(const std::string& config_path) {
+    // Clean wallet data first, if it was opened.
+    if (walletHandle) {
+        std::error_code ec;
+        const std::filesystem::path storage = wallet_dir();
+        const std::filesystem::path store = storage / ("storage.json");
+        const std::uintmax_t removed = std::filesystem::remove_all(store, ec);
+        if (ec) {
+            fprintf(stderr, "reset_storage: failed to remove %s: %s\n", store.string().c_str(), ec.message().c_str());
+            return -1;
+        }
+    }
+
+    // Stop first so RocksDB is closed before its files are deleted
+    const int64_t stop_code = stop_sequencer();
+    if (stop_code != 0) {
+        fprintf(stderr, "reset_storage: could not stop sequencer before wiping storage, stop_code: %d\n", static_cast<int>(stop_code));
+        return stop_code;
+    }
+
+    // FFI stores RocksDB at <storage>/rocksdb-{channel_id}
+    const std::filesystem::path storage = sequencer_dir();
+    std::string channel_id;
+    try {
+        std::ifstream in(config_path);
+        if (!in) {
+            fprintf(stderr, "reset_storage: could not open config %s\n", config_path.c_str());
+            return -1;
+        }
+        channel_id = nlohmann::json::parse(in).at("bedrock_config").at("channel_id").get<std::string>();
+    } catch (const std::exception& e) {
+        fprintf(stderr, "reset_storage: could not read channel_id from config: %s\n", e.what());
+        return -1;
+    }
+    // A channel id is a 32-byte hex string. Validate before building a path so a
+    // malformed/edited config can't inject separators ("../", absolute paths) and
+    // make remove_all escape the storage dir.
+    if (!isHex(channel_id, 64)) {
+        fprintf(stderr, "reset_storage: config channel_id is not a 64-char hex string; refusing to build a wipe path");
+        return -1;
+    }
+
+    const std::filesystem::path store = storage / ("rocksdb-" + channel_id);
+    std::error_code ec;
+    // remove_all returns the number of entries removed and only sets `ec` on a real
+    // error; a missing store removes 0 with no error. No exists() pre-check — that
+    // would mask an IO/permission error as a successful "nothing to wipe".
+    const std::uintmax_t removed = std::filesystem::remove_all(store, ec);
+    if (ec) {
+        fprintf(stderr, "reset_storage: failed to remove %s: %s\n", store.string().c_str(), ec.message().c_str());
+        return -1;
+    }
+    return 0;
 }
 
 int64_t LEZCoreModule::open(
