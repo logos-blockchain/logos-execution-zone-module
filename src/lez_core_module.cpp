@@ -1119,11 +1119,14 @@ int64_t LEZCoreModule::reset_storage(const std::string& config_path, bool clean_
         }
     }
 
-    // Stop first so RocksDB is closed before its files are deleted
-    const int64_t stop_code = stop_sequencer();
-    if (stop_code != 0) {
-        fprintf(stderr, "reset_storage: could not stop sequencer before wiping storage, stop_code: %d\n", static_cast<int>(stop_code));
-        return stop_code;
+    // No need to stop non-running sequencer.
+    if (sequencerHandle) {
+        // Stop first so RocksDB is closed before its files are deleted
+        const int64_t stop_code = stop_sequencer();
+        if (stop_code != 0) {
+            fprintf(stderr, "reset_storage: could not stop sequencer before wiping storage, stop_code: %d\n", static_cast<int>(stop_code));
+            return stop_code;
+        }
     }
 
     // FFI stores RocksDB at <storage>/rocksdb-{channel_id}
