@@ -1362,8 +1362,7 @@ std::string LEZCoreModule::create_new(
     const std::string& password
 ) {
     if (!sequencerHandle) {
-        fprintf(stderr, "create_new: sequencer is not started\n");
-        return {};
+        fprintf(stderr, "create_new: warning: sequencer is not started, using configured RPC address\n");
     }
 
     if (walletHandle) {
@@ -1402,8 +1401,7 @@ int64_t LEZCoreModule::open(
     const std::string& password
 ) {
     if (!sequencerHandle) {
-        fprintf(stderr, "open: sequencer is not started\n");
-        return FfiOperationError_InternalError;
+        fprintf(stderr, "open: warning: sequencer is not started, using configured RPC address\n");
     }
 
     if (walletHandle) {
