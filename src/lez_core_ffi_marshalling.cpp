@@ -232,9 +232,9 @@ namespace marshalling {
             }
             obj["accounts"] = accounts;
 
-            // Raw instruction bytes as hex.
+            // Raw message bytes as hex.
             const FfiMessageDataList& messsage = body->message.root.message;    
-            obj["instruction_data"] = bytesToHex(messsage.entries, messsage.len);
+            obj["message"] = bytesToHex(messsage.entries, messsage.len);
             obj["signature_count"] = static_cast<int>(body->witness_set.len);
 
             // Declared fee (payer + caps), not the amount actually charged.

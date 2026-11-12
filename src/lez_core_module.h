@@ -81,12 +81,12 @@ public:
     std::string transfer_shielded_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
     std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
 
-    // `instruction` uses a byte-string (`bstr`) IPC type so the auto-generated
+    // `message` uses a byte-string (`bstr`) IPC type so the auto-generated
     // Qt/QtRO glue can serialize it across the module process boundary. Declaring
     // it as std::vector<uint32_t> makes the header->LIDL generator fall back to an
     // opaque `any` with no QDataStream operators, silently dropping every argument
-    // over QtRO. The bytes are the Borsh-serialized instruction, passed to the
-    // FFI untouched (`lee` expects preserialized instruction data).
+    // over QtRO. The bytes are the Borsh-serialized message, passed to the
+    // FFI untouched (`lee` expects preserialized message).
     //
     // `payer_account_id_hex` names the fee payer: one of the signing accounts, or any
     // other public account whose key the wallet holds (it co-signs). Empty = self-pay
