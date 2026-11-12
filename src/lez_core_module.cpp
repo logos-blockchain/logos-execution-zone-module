@@ -1106,9 +1106,9 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, uint64_t dep
     return FfiOperationError_Success;
 }
 
-int64_t LEZCoreModule::reset_storage(const std::string& config_path) {
-    // Clean wallet data first, if it was opened.
-    if (walletHandle) {
+int64_t LEZCoreModule::reset_storage(const std::string& config_path, bool clean_wallet_data) {
+    // Clean wallet data first, if it was opened and needs to be cleaned, for example for channel id change.
+    if (walletHandle && clean_wallet_data) {
         std::error_code ec;
         const std::filesystem::path storage = wallet_dir();
         const std::filesystem::path store = storage / ("storage.json");

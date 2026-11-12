@@ -49,7 +49,7 @@ public:
     int64_t save();
 
     int64_t restore_storage(const std::string& mnemonic, uint64_t depth);
-    int64_t reset_storage(const std::string& config_path);
+    int64_t reset_storage(const std::string& config_path, bool clean_wallet_data);
 
     // === Account Management ===
     std::string create_account_public();
