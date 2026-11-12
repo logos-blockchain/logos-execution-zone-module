@@ -39,6 +39,7 @@ public:
     std::string wallet_dir();
     std::string sequencer_dir();
 
+    bool override_sequencer_home(const std::string& config_path);
     int64_t start_sequencer(const std::string& config_path);
     int64_t stop_sequencer();
     void init_logger(const std::string& level);

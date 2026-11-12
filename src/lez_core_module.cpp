@@ -972,12 +972,65 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
 // === Wallet Lifecycle ===
 
+// Rewrites the "home" field of the sequencer config so the DB lives in the
+// module's own directory. Returns false (and logs) on any failure.
+bool LEZCoreModule::override_sequencer_home(const std::string& config_path) {
+    try {
+        nlohmann::json cfg;
+        {
+            std::ifstream in(config_path);
+            if (!in) {
+                fprintf(stderr, "override_sequencer_home: cannot open %s\n", config_path.c_str());
+                return false;
+            }
+            cfg = nlohmann::json::parse(in);
+        }
+
+        const std::string home = sequencer_dir();
+
+        cfg["home"] = home;
+
+        // Write to a temp file and rename, so a crash mid-write can't leave
+        // a truncated config behind.
+        const std::string tmp_path = config_path + ".tmp";
+        {
+            std::ofstream out(tmp_path, std::ios::trunc);
+            if (!out) {
+                fprintf(stderr, "override_sequencer_home: cannot write %s\n", tmp_path.c_str());
+                return false;
+            }
+            out << cfg.dump(2) << '\n';
+            if (!out) {
+                fprintf(stderr, "override_sequencer_home: write failed for %s\n", tmp_path.c_str());
+                return false;
+            }
+        }
+
+        std::error_code ec;
+        std::filesystem::rename(tmp_path, config_path, ec);
+        if (ec) {
+            fprintf(stderr, "override_sequencer_home: rename failed: %s\n", ec.message().c_str());
+            std::filesystem::remove(tmp_path, ec);
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        fprintf(stderr, "override_sequencer_home: %s\n", e.what());
+        return false;
+    }
+}
+
 int64_t LEZCoreModule::start_sequencer(
     const std::string& config_path
 ) {
     if (sequencerHandle) {
         fprintf(stderr, "start_sequencer: sequencer is already started\n");
         return {};
+    }
+
+    if (!override_sequencer_home(config_path)) {
+        // Failure to modify config home should not stop startup.
+        fprintf(stderr, "start_sequencer: warning: error during config home adaptation\n");
     }
 
     InitializedSequencerServiceFFIResult start_result =
