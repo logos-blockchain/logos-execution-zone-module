@@ -1359,19 +1359,25 @@ void LEZCoreModule::init_logger(const std::string& level) {
 std::string LEZCoreModule::create_new(
     const std::string& config_path,
     const std::string& storage_path,
-    const std::string& password
+    const std::string& password,
+    bool force_rpc
 ) {
-    if (!sequencerHandle) {
-        fprintf(stderr, "create_new: warning: sequencer is not started, using configured RPC address\n");
-    }
-
     if (walletHandle) {
         fprintf(stderr, "create_new: wallet is already open\n");
         return {};
     }
 
-    FfiCreateWalletOutput create_output =
-        wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str(), sequencerHandle);
+    FfiCreateWalletOutput create_output;
+    
+    if (force_rpc) {
+        create_output = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str(), nullptr);
+    } else if (sequencerHandle) {
+        create_output = wallet_ffi_create_new(config_path.c_str(), storage_path.c_str(), password.c_str(), sequencerHandle);
+    } else {
+        fprintf(stderr, "create_new: sequencer is not started, and RPC is not enforced\n");
+        return {};
+    }
+        
     if (!create_output.wallet) {
         fprintf(stderr, "create_new: wallet_ffi_create_new returned null\n");
         return {};
@@ -1398,18 +1404,25 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, uint64_t dep
 int64_t LEZCoreModule::open(
     const std::string& config_path,
     const std::string& storage_path,
-    const std::string& password
+    const std::string& password,
+    bool force_rpc
 ) {
-    if (!sequencerHandle) {
-        fprintf(stderr, "open: warning: sequencer is not started, using configured RPC address\n");
-    }
-
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
         return FfiOperationError_InternalError;
     }
 
-    FfiOperationError error = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), sequencerHandle, password.c_str(), &walletHandle);
+    FfiOperationError error;
+
+    if (force_rpc) {
+        error = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), nullptr, password.c_str(), &walletHandle);
+    } else if (sequencerHandle) {
+        error = wallet_ffi_open(config_path.c_str(), storage_path.c_str(), sequencerHandle, password.c_str(), &walletHandle);
+    } else {
+        fprintf(stderr, "open: sequencer is not started, and RPC is not enforced\n");
+        return FfiOperationError_InternalError;
+    }
+
     if (error != FfiOperationError_Success) {
         fprintf(stderr, "open: wallet_ffi_open FFI error %d\n", error);
         return error;
