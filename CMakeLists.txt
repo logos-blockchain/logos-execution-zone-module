@@ -17,5 +17,5 @@ logos_module(
         src/lez_core_module.h
         src/lez_core_module.cpp
     EXTERNAL_LIBS
-        wallet_ffi
+        core_ffi
 )
