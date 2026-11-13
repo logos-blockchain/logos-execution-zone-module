@@ -612,4 +612,117 @@ FfiOperationError wallet_ffi_free_label_list(LabelList *label_list) {
     }
 }
 
+// === Sequencer queries ===
+
+PointerResult_FfiOption_FfiAccount_____FfiOperationError sequencer_ffi_query_account(const SequencerServiceFFI *sequencer,
+                                                                                            FfiAccountId account_id) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_account");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
+    PointerResult_FfiOption_FfiAccount_____FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+void primitves_ffi_free_ffi_account_opt(FfiOption_FfiAccount *val) {
+    LOGOS_CMOCK_RECORD("primitves_ffi_free_ffi_account_opt");
+}
+
+PointerResult_FfiBlockOpt__FfiOperationError sequencer_ffi_query_block(const SequencerServiceFFI *sequencer,
+                                                                              FfiBlockId block_id) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_block");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
+    PointerResult_FfiBlockOpt__FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+void primitives_ffi_free_ffi_block_opt(FfiBlockOpt *val) {
+    LOGOS_CMOCK_RECORD("primitives_ffi_free_ffi_block_opt");
+}
+
+PointerResult_FfiBlockOpt__FfiOperationError sequencer_ffi_query_block_by_hash(const SequencerServiceFFI *sequencer,
+                                                                                      FfiHashType hash) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_block_by_hash");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
+    PointerResult_FfiBlockOpt__FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+PointerResult_FfiOption_FfiTransaction_____FfiOperationError sequencer_ffi_query_transaction(const SequencerServiceFFI *sequencer,
+                                                                                                    FfiHashType hash) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_transaction");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
+    PointerResult_FfiOption_FfiTransaction_____FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+void primitives_ffi_free_ffi_transaction_opt(FfiOption_FfiTransaction *val) {
+    LOGOS_CMOCK_RECORD("primitives_ffi_free_ffi_transaction_opt");
+}
+
+PointerResult_FfiVec_FfiBlock_____FfiOperationError sequencer_ffi_query_block_vec(const SequencerServiceFFI *sequencer,
+                                                                                         FfiOption_u64 before,
+                                                                                         uint64_t limit) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_block_vec");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
+    PointerResult_FfiVec_FfiBlock_____FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+void primitives_ffi_free_ffi_block_vec(FfiVec_FfiBlock *val) {
+    LOGOS_CMOCK_RECORD("primitives_ffi_free_ffi_block_vec");
+}
+
+LastBlockIdResult sequencer_ffi_query_last_block(const SequencerServiceFFI *sequencer) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_last_block");
+    const int err = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_query_last_block");
+    LastBlockIdResult res;
+    if (err == 0) {
+        res.block_id = static_cast<uint64_t>(10);
+        res.error = FfiOperationError_Success;
+        res.is_some = true;
+    } else {
+        res.block_id = 0;
+        res.is_some = false;
+        res.error = FfiOperationError_InternalError;
+    }
+    return res;
+}
+
+char *sequencer_ffi_query_status(const SequencerServiceFFI *sequencer) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_status");
+    const char* status = LOGOS_CMOCK_RETURN_STRING("sequencer_ffi_query_status");
+    return strdup((status && *status) ? status : "NotStarted");
+}
+
+PointerResult_FfiVec_FfiTransaction_____FfiOperationError sequencer_ffi_query_transactions_by_account(const SequencerServiceFFI *sequencer,
+                                                                                                             FfiAccountId account_id,
+                                                                                                             uint64_t offset,
+                                                                                                             uint64_t limit) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_transactions_by_account");
+    // It is pointless to create an instance of mocked FFI type in this exact case.
+    // All what is done with it is marshalling.
+    PointerResult_FfiVec_FfiTransaction_____FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+void primitives_ffi_free_ffi_transaction_vec(FfiVec_FfiTransaction *val) {
+    LOGOS_CMOCK_RECORD("primitives_ffi_free_ffi_transaction_vec");
+}
+
 } // extern "C"

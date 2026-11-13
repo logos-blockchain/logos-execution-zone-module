@@ -1,4 +1,5 @@
 #include "lez_core_module.h"
+#include "lez_core_ffi_marshalling.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -8,353 +9,13 @@
 #include <memory>
 #include <random>
 #include <vector>
+#include <fstream>
 
 #include <nlohmann/json.hpp>
 
+using namespace marshalling;
+
 namespace {
-
-    std::string bytesToHex(const uint8_t* data, const size_t length) {
-        static const char hexChars[] = "0123456789abcdef";
-        std::string out;
-        out.reserve(length * 2);
-        for (size_t i = 0; i < length; ++i) {
-            out.push_back(hexChars[(data[i] >> 4) & 0xF]);
-            out.push_back(hexChars[data[i] & 0xF]);
-        }
-        return out;
-    }
-
-    // Balance from wallet_ffi_get_balance is 16 bytes little-endian (u128). Convert to decimal string for UI.
-    // Requires __uint128_t (GCC/Clang on 64-bit).
-    std::string balanceLe16ToDecimalString(const uint8_t* data) {
-#if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ >= 16
-        __uint128_t v = 0;
-        for (int i = 0; i < 16; ++i)
-            v |= static_cast<__uint128_t>(data[i]) << (i * 8);
-        if (v == 0)
-            return "0";
-        char buf[40];
-        int i = 0;
-        while (v) {
-            buf[i++] = static_cast<char>('0' + (v % 10));
-            v /= 10;
-        }
-        std::reverse(buf, buf + i);
-        return std::string(buf, i);
-#else
-#error "balanceLe16ToDecimalString requires __uint128_t; build with GCC or Clang on 64-bit"
-#endif
-    }
-
-    namespace JsonKeys {
-        constexpr auto TxHash = "tx_hash";
-        constexpr auto Success = "success";
-        constexpr auto Error = "error";
-        constexpr auto Nonce = "nonce";
-        constexpr auto ActorStates = "actor_states";
-        constexpr auto Program = "program";
-        constexpr auto Data = "data";
-        constexpr auto NullifierPublicKey = "nullifier_public_key";
-        constexpr auto ViewingPublicKey = "viewing_public_key";
-        constexpr auto AccountId = "account_id";
-        constexpr auto IsPublic = "is_public";
-        constexpr auto Secrets = "secrets";
-        constexpr auto Kind = "kind";
-        constexpr auto KindDisclosed = "disclosed";
-        constexpr auto KindShadow = "shadow";
-        constexpr auto KindUndisclosed = "undisclosed";
-        constexpr auto ProgramHeader = "program_header";
-        constexpr auto ImageIdHex = "image_id_hex";
-        constexpr auto ProgramFirstSegmentHex = "program_first_segment_hex";
-        constexpr auto Immutable = "immutable";
-        constexpr auto MembershipProof = "membership_proof";
-        constexpr auto Index = "index";
-        constexpr auto Path = "path";
-        constexpr auto KindPrivateOwned = "private_owned";
-        constexpr auto KindPublic = "public";
-        constexpr auto KindPublicNoSign = "public_no_sign";
-        constexpr auto KindPrivateForeign = "private_foreign";
-    } // namespace JsonKeys
-
-    bool hexToBytes(const std::string& hex, std::vector<uint8_t>& output_bytes, int expectedLength = -1) {
-        // Trim whitespace.
-        size_t start = hex.find_first_not_of(" \t\n\r\f\v");
-        if (start == std::string::npos) {
-            output_bytes.clear();
-            return expectedLength == -1 || expectedLength == 0;
-        }
-        size_t end = hex.find_last_not_of(" \t\n\r\f\v");
-        std::string trimmed = hex.substr(start, end - start + 1);
-
-        if (trimmed.size() >= 2 && trimmed[0] == '0' && (trimmed[1] == 'x' || trimmed[1] == 'X'))
-            trimmed = trimmed.substr(2);
-
-        if (trimmed.size() % 2 != 0)
-            return false;
-
-        std::vector<uint8_t> decoded;
-        decoded.reserve(trimmed.size() / 2);
-        auto nibble = [](char c, int& out) -> bool {
-            if (c >= '0' && c <= '9') {
-                out = c - '0';
-                return true;
-            }
-            if (c >= 'a' && c <= 'f') {
-                out = c - 'a' + 10;
-                return true;
-            }
-            if (c >= 'A' && c <= 'F') {
-                out = c - 'A' + 10;
-                return true;
-            }
-            return false;
-        };
-        for (size_t i = 0; i < trimmed.size(); i += 2) {
-            int hi = 0, lo = 0;
-            if (!nibble(trimmed[i], hi) || !nibble(trimmed[i + 1], lo))
-                return false;
-            decoded.push_back(static_cast<uint8_t>((hi << 4) | lo));
-        }
-
-        if (expectedLength != -1 && static_cast<int>(decoded.size()) != expectedLength)
-            return false;
-
-        output_bytes = std::move(decoded);
-        return true;
-    }
-
-    bool hexToU128(const std::string& hex, uint8_t (*output)[16]) {
-        std::vector<uint8_t> buffer;
-        if (!hexToBytes(hex, buffer, 16))
-            return false;
-        memcpy(output, buffer.data(), 16);
-        return true;
-    }
-
-    std::string bytes32ToHex(const FfiBytes32& bytes) {
-        return bytesToHex(bytes.data, 32);
-    }
-
-    bool hexToBytes32(const std::string& hex, FfiBytes32* output_bytes) {
-        if (output_bytes == nullptr)
-            return false;
-        std::vector<uint8_t> buffer;
-        if (!hexToBytes(hex, buffer, 32))
-            return false;
-        memcpy(output_bytes->data, buffer.data(), 32);
-        return true;
-    }
-
-    // Builds JSON { success, tx_hash, error } for both success (result + empty error) and failure (nullptr +
-    // errorMessage).
-    std::string transferResultToJson(const FfiTransferResult* result, const std::string& errorMessage) {
-        nlohmann::json obj = nlohmann::json::object();
-        const bool isError = !errorMessage.empty();
-        obj[JsonKeys::Success] = !isError && result && result->success;
-        obj[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? std::string(result->tx_hash) : std::string();
-        obj[JsonKeys::Error] = errorMessage;
-        return obj.dump();
-    }
-
-    // Builds JSON { success, tx_hash, secrets, error } for both success (result + empty error) and failure (nullptr +
-    // errorMessage) in case of generic transaction.
-    std::string genericTransactionResultToJson(const FfiTransactionResult* result, const std::string& errorMessage) {
-        nlohmann::json obj = nlohmann::json::object();
-        const bool isError = !errorMessage.empty();
-        obj[JsonKeys::Success] = !isError && result && result->success;
-        obj[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? std::string(result->tx_hash) : std::string();
-        std::vector<std::string> secrets;
-        if (!isError && result && result->secrets_data) {
-            for (uintptr_t i = 0; i < result->secrets_size; ++i) {
-                secrets.push_back(bytes32ToHex(result->secrets_data[i]));
-            }
-        }
-        obj[JsonKeys::Secrets] = secrets;
-        obj[JsonKeys::Error] = errorMessage;
-        return obj.dump();
-    }
-
-    // Builds JSON { nonce, actor_states: [{ program, data }] }.
-    std::string ffiAccountToJson(const FfiAccount& account) {
-        nlohmann::json obj = nlohmann::json::object();
-        obj[JsonKeys::Nonce] = bytesToHex(account.nonce.data, 16);
-        nlohmann::json actor_states = nlohmann::json::array();
-        for (uintptr_t i = 0; account.actor_states && i < account.actor_states_len; ++i) {
-            const FfiActorState& actor_state = account.actor_states[i];
-            nlohmann::json actorStateObj = nlohmann::json::object();
-            actorStateObj[JsonKeys::Program] = bytes32ToHex(actor_state.program);
-            actorStateObj[JsonKeys::Data] =
-                (actor_state.data && actor_state.data_len > 0) ? bytesToHex(actor_state.data, actor_state.data_len) : std::string();
-            actor_states.push_back(actorStateObj);
-        }
-        obj[JsonKeys::ActorStates] = actor_states;
-        return obj.dump();
-    }
-
-    nlohmann::json ffiAccountListEntryToJson(const FfiAccountListEntry& entry) {
-        nlohmann::json obj = nlohmann::json::object();
-        obj[JsonKeys::AccountId] = bytes32ToHex(entry.account_id);
-        obj[JsonKeys::IsPublic] = entry.is_public;
-        return obj;
-    }
-
-    std::string ffiPrivateAccountKeysToJson(const FfiPrivateAccountKeys& keys) {
-        nlohmann::json obj = nlohmann::json::object();
-        obj[JsonKeys::NullifierPublicKey] = bytes32ToHex(keys.nullifier_public_key);
-        if (keys.viewing_public_key.entries && keys.viewing_public_key.len > 0) {
-            obj[JsonKeys::ViewingPublicKey] = bytesToHex(keys.viewing_public_key.entries, keys.viewing_public_key.len);
-        } else {
-            obj[JsonKeys::ViewingPublicKey] = "";
-        }
-        return obj.dump();
-    }
-
-    bool jsonToFfiPrivateAccountKeys(const std::string& json, FfiPrivateAccountKeys* output_keys) {
-        if (!output_keys)
-            return false;
-
-        nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
-        if (doc.is_discarded() || !doc.is_object())
-            return false;
-
-        // Nullifier public key is mandatory: a missing/wrong-typed value must not fall back to zero.
-        const auto npkIt = doc.find(JsonKeys::NullifierPublicKey);
-        if (npkIt == doc.end() || !npkIt->is_string())
-            return false;
-
-        FfiBytes32 nullifierPublicKey{};
-        if (!hexToBytes32(npkIt->get<std::string>(), &nullifierPublicKey))
-            return false;
-
-        // Viewing public key is optional: absent means empty (nullptr, 0).
-        std::vector<uint8_t> viewingPublicKey;
-        const auto vpkIt = doc.find(JsonKeys::ViewingPublicKey);
-        if (vpkIt != doc.end()) {
-            if (!vpkIt->is_string())
-                return false;
-            if (!hexToBytes(vpkIt->get<std::string>(), viewingPublicKey))
-                return false;
-        }
-
-        const uint8_t* vpkData = viewingPublicKey.empty() ? nullptr : viewingPublicKey.data();
-
-        const FfiOperationError err = wallet_ffi_make_private_account_keys_from_raw(
-            nullifierPublicKey,
-            vpkData,
-            viewingPublicKey.size(),
-            output_keys);
-
-        return err == FfiOperationError_Success;
-    }
-
-    // Parses a JSON array of 32-byte hex strings into a contiguous byte buffer of siblings.
-    // Returns true on success, with out_len set to the number of siblings and out_bytes sized to out_len*32.
-    bool jsonArrayHexToSiblings32(
-        const std::string& json_array_str,
-        std::vector<uint8_t>& out_bytes,
-        uintptr_t& out_len
-    ) {
-        nlohmann::json doc = nlohmann::json::parse(json_array_str, nullptr, false);
-        if (doc.is_discarded() || !doc.is_array())
-            return false;
-
-        out_len = static_cast<uintptr_t>(doc.size());
-        out_bytes.clear();
-        out_bytes.reserve(out_len * 32);
-
-        for (const auto& v : doc) {
-            if (!v.is_string())
-                return false;
-            std::vector<uint8_t> bytes;
-            if (!hexToBytes(v.get<std::string>(), bytes, 32))
-                return false;
-            out_bytes.insert(out_bytes.end(), bytes.begin(), bytes.end());
-        }
-        return true;
-    }
-
-    // FfiMembershipProof.path points into proof_path_bytes, which must outlive it.
-    struct ParsedProgramKind {
-        FfiProgramKind kind{};
-        // Required for disclosed/undisclosed; optional for shadow (the FFI derives its address).
-        bool has_account_id = false;
-        FfiBytes32 account_id{};
-        FfiProgramHeader program_header{};
-        std::vector<uint8_t> proof_path_bytes;
-        FfiMembershipProof membership_proof{};
-    };
-
-    bool jsonToProgramKind(const std::string& json, ParsedProgramKind* out) {
-        nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
-        if (doc.is_discarded() || !doc.is_object())
-            return false;
-        if (!doc.contains(JsonKeys::Kind) || !doc[JsonKeys::Kind].is_string())
-            return false;
-
-        const std::string kindStr = doc[JsonKeys::Kind].get<std::string>();
-        if (kindStr == JsonKeys::KindDisclosed)
-            out->kind = FfiProgramKind::FfiProgramKind_ProgramDisclosed;
-        else if (kindStr == JsonKeys::KindShadow)
-            out->kind = FfiProgramKind::FfiProgramKind_ProgramShadow;
-        else if (kindStr == JsonKeys::KindUndisclosed)
-            out->kind = FfiProgramKind::FfiProgramKind_ProgramUndisclosed;
-        else
-            return false;
-
-        if (doc.contains(JsonKeys::AccountId)) {
-            if (!doc[JsonKeys::AccountId].is_string())
-                return false;
-            if (!hexToBytes32(doc[JsonKeys::AccountId].get<std::string>(), &out->account_id))
-                return false;
-            out->has_account_id = true;
-        }
-
-        if (out->kind == FfiProgramKind::FfiProgramKind_ProgramShadow)
-            return true;
-        if (!out->has_account_id)
-            return false;
-        if (out->kind == FfiProgramKind::FfiProgramKind_ProgramDisclosed)
-            return true;
-
-        if (!doc.contains(JsonKeys::ProgramHeader) || !doc[JsonKeys::ProgramHeader].is_object())
-            return false;
-        const auto& header = doc[JsonKeys::ProgramHeader];
-
-        if (!header.contains(JsonKeys::ImageIdHex) || !header[JsonKeys::ImageIdHex].is_string())
-            return false;
-        if (!hexToBytes32(header[JsonKeys::ImageIdHex].get<std::string>(), &out->program_header.image_id))
-            return false;
-
-        if (!header.contains(JsonKeys::ProgramFirstSegmentHex) || !header[JsonKeys::ProgramFirstSegmentHex].is_string())
-            return false;
-        if (!hexToBytes32(
-                header[JsonKeys::ProgramFirstSegmentHex].get<std::string>(), &out->program_header.program_first_segment
-            ))
-            return false;
-
-        if (!header.contains(JsonKeys::Immutable) || !header[JsonKeys::Immutable].is_boolean())
-            return false;
-        out->program_header.immutable = header[JsonKeys::Immutable].get<bool>();
-
-        if (!doc.contains(JsonKeys::MembershipProof) || !doc[JsonKeys::MembershipProof].is_object())
-            return false;
-        const auto& proof = doc[JsonKeys::MembershipProof];
-
-        if (!proof.contains(JsonKeys::Index) || !proof[JsonKeys::Index].is_number_unsigned())
-            return false;
-        out->membership_proof.index = proof[JsonKeys::Index].get<uintptr_t>();
-
-        if (!proof.contains(JsonKeys::Path) || !proof[JsonKeys::Path].is_array())
-            return false;
-        uintptr_t path_len = 0;
-        if (!jsonArrayHexToSiblings32(proof[JsonKeys::Path].dump(), out->proof_path_bytes, path_len))
-            return false;
-        out->membership_proof.path = reinterpret_cast<const FfiBytes32*>(out->proof_path_bytes.data());
-        out->membership_proof.path_len = path_len;
-
-        return true;
-    }
-
     // Mentions borrow the identities' heap fields; free the identities only after use.
     bool buildAccountMentions(
         const std::vector<FfiAccountIdentity>& identities,
@@ -647,10 +308,6 @@ LEZCoreModule::~LEZCoreModule() {
     }
 }
 
-std::string LEZCoreModule::name() const {
-    return "lez_core";
-}
-
 // === Persistent locations ===
 
 std::string LEZCoreModule::wallet_dir() {
@@ -751,7 +408,7 @@ std::string LEZCoreModule::get_account_public(const std::string& account_id_hex)
         fprintf(stderr, "get_account_public: wallet FFI error %d\n", error);
         return {};
     }
-    std::string result = ffiAccountToJson(account);
+    std::string result = jsonToCompactString(ffiAccountToJson(account));
     wallet_ffi_free_account_data(&account);
     return result;
 }
@@ -768,7 +425,7 @@ std::string LEZCoreModule::get_account_private(const std::string& account_id_hex
         fprintf(stderr, "get_account_private: wallet FFI error %d\n", error);
         return {};
     }
-    std::string result = ffiAccountToJson(account);
+    std::string result = jsonToCompactString(ffiAccountToJson(account));
     wallet_ffi_free_account_data(&account);
     return result;
 }
@@ -1315,12 +972,65 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
 // === Wallet Lifecycle ===
 
+// Rewrites the "home" field of the sequencer config so the DB lives in the
+// module's own directory. Returns false (and logs) on any failure.
+bool LEZCoreModule::override_sequencer_home(const std::string& config_path) {
+    try {
+        nlohmann::json cfg;
+        {
+            std::ifstream in(config_path);
+            if (!in) {
+                fprintf(stderr, "override_sequencer_home: cannot open %s\n", config_path.c_str());
+                return false;
+            }
+            cfg = nlohmann::json::parse(in);
+        }
+
+        const std::string home = sequencer_dir();
+
+        cfg["home"] = home;
+
+        // Write to a temp file and rename, so a crash mid-write can't leave
+        // a truncated config behind.
+        const std::string tmp_path = config_path + ".tmp";
+        {
+            std::ofstream out(tmp_path, std::ios::trunc);
+            if (!out) {
+                fprintf(stderr, "override_sequencer_home: cannot write %s\n", tmp_path.c_str());
+                return false;
+            }
+            out << cfg.dump(2) << '\n';
+            if (!out) {
+                fprintf(stderr, "override_sequencer_home: write failed for %s\n", tmp_path.c_str());
+                return false;
+            }
+        }
+
+        std::error_code ec;
+        std::filesystem::rename(tmp_path, config_path, ec);
+        if (ec) {
+            fprintf(stderr, "override_sequencer_home: rename failed: %s\n", ec.message().c_str());
+            std::filesystem::remove(tmp_path, ec);
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        fprintf(stderr, "override_sequencer_home: %s\n", e.what());
+        return false;
+    }
+}
+
 int64_t LEZCoreModule::start_sequencer(
     const std::string& config_path
 ) {
     if (sequencerHandle) {
         fprintf(stderr, "start_sequencer: sequencer is already started\n");
         return {};
+    }
+
+    if (!override_sequencer_home(config_path)) {
+        // Failure to modify config home should not stop startup.
+        fprintf(stderr, "start_sequencer: warning: error during config home adaptation\n");
     }
 
     InitializedSequencerServiceFFIResult start_result =
@@ -1399,6 +1109,64 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, uint64_t dep
     }
 
     return FfiOperationError_Success;
+}
+
+int64_t LEZCoreModule::reset_storage(const std::string& config_path, bool clean_wallet_data) {
+    // Clean wallet data first, if it was opened and needs to be cleaned, for example for channel id change.
+    if (walletHandle && clean_wallet_data) {
+        std::error_code ec;
+        const std::filesystem::path storage = wallet_dir();
+        const std::filesystem::path store = storage / ("storage.json");
+        const std::uintmax_t removed = std::filesystem::remove_all(store, ec);
+        if (ec) {
+            fprintf(stderr, "reset_storage: failed to remove %s: %s\n", store.string().c_str(), ec.message().c_str());
+            return -1;
+        }
+    }
+
+    // No need to stop non-running sequencer.
+    if (sequencerHandle) {
+        // Stop first so RocksDB is closed before its files are deleted
+        const int64_t stop_code = stop_sequencer();
+        if (stop_code != 0) {
+            fprintf(stderr, "reset_storage: could not stop sequencer before wiping storage, stop_code: %d\n", static_cast<int>(stop_code));
+            return stop_code;
+        }
+    }
+
+    // FFI stores RocksDB at <storage>/rocksdb-{channel_id}
+    const std::filesystem::path storage = sequencer_dir();
+    std::string channel_id;
+    try {
+        std::ifstream in(config_path);
+        if (!in) {
+            fprintf(stderr, "reset_storage: could not open config %s\n", config_path.c_str());
+            return -1;
+        }
+        channel_id = nlohmann::json::parse(in).at("bedrock_config").at("channel_id").get<std::string>();
+    } catch (const std::exception& e) {
+        fprintf(stderr, "reset_storage: could not read channel_id from config: %s\n", e.what());
+        return -1;
+    }
+    // A channel id is a 32-byte hex string. Validate before building a path so a
+    // malformed/edited config can't inject separators ("../", absolute paths) and
+    // make remove_all escape the storage dir.
+    if (!isHex(channel_id, 64)) {
+        fprintf(stderr, "reset_storage: config channel_id is not a 64-char hex string; refusing to build a wipe path");
+        return -1;
+    }
+
+    const std::filesystem::path store = storage / ("rocksdb-" + channel_id);
+    std::error_code ec;
+    // remove_all returns the number of entries removed and only sets `ec` on a real
+    // error; a missing store removes 0 with no error. No exists() pre-check — that
+    // would mask an IO/permission error as a successful "nothing to wipe".
+    const std::uintmax_t removed = std::filesystem::remove_all(store, ec);
+    if (ec) {
+        fprintf(stderr, "reset_storage: failed to remove %s: %s\n", store.string().c_str(), ec.message().c_str());
+        return -1;
+    }
+    return 0;
 }
 
 int64_t LEZCoreModule::open(
@@ -1536,4 +1304,260 @@ std::vector<std::string> LEZCoreModule::get_all_labels_for_account(const std::st
     }
 
     return result;
+}
+
+// === Sequencer queries ===
+//
+// Each method calls the matching sequencer_query_* FFI function on the handle we hold,
+// marshals the returned C struct into compact JSON, then frees the FFI
+// allocation with the matching primitives_free_ffi_* function. The frees take the outer
+// pointer (PointerResult.value) and reclaim the whole allocation.
+
+std::string LEZCoreModule::getAccount(const std::string& account_id) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getAccount failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiAccountId id;
+    if (!accountStrToBytes32(account_id, &id)) {
+        fprintf(stderr, "getAccount failed : invalid account id (need Base58 or 32-byte hex) \n");
+        return {};
+    }
+
+    PointerResult_FfiOption_FfiAccount_____FfiOperationError res = sequencer_ffi_query_account(sequencerHandle, id);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getAccount failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiAccountToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getAccount warning : account with id %s not found \n", account_id.c_str());
+    }
+
+    // TODO: Yes, this is a typo, need to fix core_ffi.
+    primitves_ffi_free_ffi_account_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getBlockById(const std::string& block_id) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getBlockById failed : sequencer not started \n");
+        return {};
+    }
+
+    char* end = nullptr;
+    const uint64_t id = std::strtoull(block_id.c_str(), &end, 10);
+    if (end == block_id.c_str() || *end != '\0') {
+        fprintf(stderr, "getBlockById failed : invalid block id \n");
+        return {};
+    }
+
+    PointerResult_FfiBlockOpt__FfiOperationError res = sequencer_ffi_query_block(sequencerHandle, id);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getBlockById failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiBlockToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getBlockById warning : block with id %s not found \n", block_id.c_str());
+    }
+
+    primitives_ffi_free_ffi_block_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getBlockByHash(const std::string& hash) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getBlockByHash failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiHashType h;
+    if (!hexToBytes32(hash, &h)) {
+        fprintf(stderr, "getBlockByHash failed : invalid hash (need 32-byte hex) \n");
+        return {};
+    }
+
+    PointerResult_FfiBlockOpt__FfiOperationError res = sequencer_ffi_query_block_by_hash(sequencerHandle, h);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getBlockByHash failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiBlockToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getBlockByHash warning : block with hash %s not found \n", hash.c_str());
+    }
+    primitives_ffi_free_ffi_block_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getTransaction(const std::string& hash) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getTransaction failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiHashType h;
+    if (!hexToBytes32(hash, &h)) {
+        fprintf(stderr, "getTransaction failed : invalid hash (need 32-byte hex) \n");
+        return {};
+    }
+
+    PointerResult_FfiOption_FfiTransaction_____FfiOperationError res =
+        sequencer_ffi_query_transaction(sequencerHandle, h);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getTransaction failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    std::string out;
+    if (res.value->is_some) {
+        out = jsonToCompactString(ffiTransactionToJson(*res.value->value));
+    } else {
+        fprintf(stderr, "getTransaction warning : transaction with hash %s not found \n", hash.c_str());
+    }
+    primitives_ffi_free_ffi_transaction_opt(res.value);
+    return out;
+}
+
+std::string LEZCoreModule::getBlocks(const std::string& before, const std::string& limit) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getBlocks failed : sequencer not started \n");
+        return {};
+    }
+
+    char* end = nullptr;
+    const uint64_t parsedLimit = std::strtoull(limit.c_str(), &end, 10);
+    if (end == limit.c_str() || *end != '\0') {
+        fprintf(stderr, "getBlocks failed : invalid limit \n");
+        return {};
+    }
+    if (parsedLimit == 0) {
+        // No need to call sequencer if limit is zero.
+        return "[]";
+    }
+    const uint64_t limitNum = parsedLimit > 0 ? parsedLimit - 1 : 0;
+
+    // `before` is the optional pagination cursor: an empty string means "from
+    // the tip", a non-empty value that fails to parse is an error. `beforeVal`
+    // must outlive the call since FfiOption_u64 borrows its address.
+    uint64_t beforeVal = 0;
+    bool hasBefore = false;
+    if (!before.empty()) {
+        char* bend = nullptr;
+        beforeVal = std::strtoull(before.c_str(), &bend, 10);
+        if (bend == before.c_str() || *bend != '\0') {
+            fprintf(stderr, "getBlocks failed : invalid before \n");
+            return {};
+        }
+        if (beforeVal == 0) {
+            // Can not get blocks before zero block.
+            return "[]";
+        }
+        --beforeVal;
+        hasBefore = true;
+    }    
+    FfiOption_u64 beforeOpt;
+    beforeOpt.is_some = hasBefore;
+    beforeOpt.value = hasBefore ? &beforeVal : nullptr;
+
+    PointerResult_FfiVec_FfiBlock_____FfiOperationError res =
+        sequencer_ffi_query_block_vec(sequencerHandle, beforeOpt, limitNum);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getBlocks failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (uintptr_t i = res.value->len; i > 0; --i) {
+        arr.push_back(ffiBlockToJson(res.value->entries[i - 1]));
+    }
+    primitives_ffi_free_ffi_block_vec(res.value);
+    return jsonToCompactString(arr);
+}
+
+std::string LEZCoreModule::getLastFinalizedBlockId() {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getLastFinalizedBlockId failed : sequencer not started \n");
+        return {};
+    }
+
+    LastBlockIdResult res = sequencer_ffi_query_last_block(sequencerHandle);
+    if ((res.error != FfiOperationError_Success) || !res.is_some) {
+        fprintf(stderr, "getLastFinalizedBlockId failed : sequencer FFI error or no finalized block yet \n");
+        return {};
+    }
+
+    // Bare decimal string; the id is returned inline, nothing to free.
+    return u64ToString(res.block_id);
+}
+
+std::string LEZCoreModule::getStatus() {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getStatus failed : sequencer not started \n");
+        return {};
+    }
+
+    // The FFI builds the status JSON itself (schema owned by sequencer_core), so
+    // there is nothing to marshal — copy the C string out and free it.
+    char* json = sequencer_ffi_query_status(sequencerHandle);
+    if (!json) {
+        fprintf(stderr, "getStatus failed : sequencer FFI error \n");
+        return {};
+    }
+
+    primitives_ffi_free_cstring(json);
+    // TODO: Not implemented yet. Return json string when implemented.
+    return "Not supported";
+}
+
+std::string LEZCoreModule::getTransactionsByAccount(
+    const std::string& account_id,
+    const std::string& offset,
+    const std::string& limit
+) {
+    if (!sequencerHandle) {
+        fprintf(stderr, "getTransactionsByAccount failed : sequencer not started \n");
+        return {};
+    }
+
+    FfiAccountId id;
+    if (!accountStrToBytes32(account_id, &id)) {
+        fprintf(stderr, "getTransactionsByAccount failed : invalid account id (need Base58 or 32-byte hex) \n");
+        return {};
+    }
+
+    char* offEnd = nullptr;
+    char* limEnd = nullptr;
+    const uint64_t offsetNum = std::strtoull(offset.c_str(), &offEnd, 10);
+    const uint64_t limitNum = std::strtoull(limit.c_str(), &limEnd, 10);
+    if (offEnd == offset.c_str() || *offEnd != '\0' || limEnd == limit.c_str() || *limEnd != '\0') {
+        fprintf(stderr, "getTransactionsByAccount failed : invalid offset/limit \n");
+        return {};
+    }
+
+    PointerResult_FfiVec_FfiTransaction_____FfiOperationError res =
+        sequencer_ffi_query_transactions_by_account(sequencerHandle, id, offsetNum, limitNum);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getTransactionsByAccount failed : sequencer FFI error %d\n", res.error);
+        return {};
+    }
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (uintptr_t i = 0; i < res.value->len; ++i) {
+        arr.push_back(ffiTransactionToJson(res.value->entries[i]));
+    }
+    primitives_ffi_free_ffi_transaction_vec(res.value);
+    return jsonToCompactString(arr);
 }
