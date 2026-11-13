@@ -44,8 +44,8 @@ public:
     int64_t stop_sequencer();
     void init_logger(const std::string& level);
 
-    std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password);
-    int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& password);
+    std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password, bool force_rpc);
+    int64_t open(const std::string& config_path, const std::string& storage_path, const std::string& password, bool force_rpc);
     int64_t save();
 
     int64_t restore_storage(const std::string& mnemonic, uint64_t depth);

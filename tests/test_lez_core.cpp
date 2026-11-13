@@ -704,10 +704,10 @@ LOGOS_TEST(create_new_success_then_double_open_fails) {
     LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
-    LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw").empty());
+    LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw", false).empty());
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_new"));
     // Second attempt: already open.
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
+    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw", false), "");
 }
 
 LOGOS_TEST(create_new_null_handle_returns_internal_error) {
@@ -715,7 +715,7 @@ LOGOS_TEST(create_new_null_handle_returns_internal_error) {
     t.mockCFunction("wallet_ffi_create_new").returns(0); // null handle
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw"), "");
+    LOGOS_ASSERT_EQ(module.create_new("/cfg", "/store", "pw", false), "");
 }
 
 LOGOS_TEST(open_success) {
@@ -725,7 +725,7 @@ LOGOS_TEST(open_success) {
     LEZCoreModule module;
 
     LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
-    LOGOS_ASSERT_EQ(module.open("/cfg", "/store", "password"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.open("/cfg", "/store", "password", false), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_open"));
 }
 
