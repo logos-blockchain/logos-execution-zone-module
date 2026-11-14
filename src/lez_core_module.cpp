@@ -21,7 +21,8 @@ namespace {
         const std::vector<FfiAccountIdentity>& identities,
         const std::vector<std::string>& actor_state_program_account_ids_hex,
         std::vector<FfiAccountMention>& out_mentions,
-        std::string& out_error
+        std::string& out_error,
+        const std::vector<bool>* authorizes = nullptr
     ) {
         if (!actor_state_program_account_ids_hex.empty() && actor_state_program_account_ids_hex.size() != identities.size()) {
             out_error = "actor_state_program_account_ids_hex must be empty or match account_ids in size";
@@ -33,6 +34,9 @@ namespace {
         for (size_t i = 0; i < identities.size(); ++i) {
             FfiAccountMention mention{};
             mention.identity = identities[i];
+            // The wallet signs for an account only when its mention authorizes (account_manager:
+            // `owned_key.filter(|_| authorizes)`); left false, a public send has no signer at all.
+            mention.authorizes = authorizes && i < authorizes->size() && (*authorizes)[i];
 
             const bool hasOverride =
                 !actor_state_program_account_ids_hex.empty() && !actor_state_program_account_ids_hex[i].empty();
@@ -803,7 +807,7 @@ std::string LEZCoreModule::send_generic_public_transaction(
     std::vector<FfiAccountMention> mentions;
     std::string mentions_error;
     if (!buildAccountMentions(
-            identities_resolved, actor_state_program_account_ids_hex, mentions, mentions_error
+            identities_resolved, actor_state_program_account_ids_hex, mentions, mentions_error, &signing_requirements
         )) {
         fprintf(stderr, "send_generic_public_transaction: %s\n", mentions_error.c_str());
         free_identities();
