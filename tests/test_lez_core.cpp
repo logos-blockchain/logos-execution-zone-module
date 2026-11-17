@@ -403,6 +403,17 @@ LOGOS_TEST(send_generic_public_transaction_shard_override) {
     LOGOS_ASSERT_TRUE(bytesEqual(MockWalletFfiCapture::lastMentions[1].program_account_id, 0xCC));
 }
 
+LOGOS_TEST(send_generic_public_transaction_signing_requirements_authorize) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    // The wallet signs only for mentions that authorize: signing_requirements must reach them.
+    module.send_generic_public_transaction({VALID_ID, VALID_ID_2}, 0, {true, false}, {}, VALID_ID, {VALID_ID_D, VALID_ID_C});
+    LOGOS_ASSERT_TRUE(t.cFunctionCalled("wallet_ffi_send_generic_public_transaction"));
+    LOGOS_ASSERT_TRUE(MockWalletFfiCapture::lastMentions[0].authorizes);
+    LOGOS_ASSERT_FALSE(MockWalletFfiCapture::lastMentions[1].authorizes);
+}
+
 LOGOS_TEST(send_generic_public_transaction_shard_size_mismatch_error_json) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
