@@ -55,6 +55,11 @@ public:
     std::string create_account_public();
     std::string create_account_private();
     LogosList list_accounts();
+    std::string create_sealing_key();
+    int64_t create_group(const std::string& label);
+    std::string create_private_shared_account(const std::string& group_label, const std::vector<uint8_t>& derivation_id);
+    std::string invite(const std::string& sealing_public_key, const std::string& invitee_label);
+    int64_t join(const std::string& sealed_message, const std::string& joiner_label);
 
     // === Account Queries ===
     std::string get_balance(const std::string& account_id_hex, bool is_public);

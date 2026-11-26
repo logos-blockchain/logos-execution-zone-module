@@ -136,16 +136,16 @@
         "rust-rapidsnark": "rust-rapidsnark"
       },
       "locked": {
-        "lastModified": 1794360994,
-        "narHash": "sha256-ElqO2Xg5FLs1EeKtPvYt85QnPn04HCM2NF70dptbVlo=",
+        "lastModified": 1795703393,
+        "narHash": "sha256-OSIiAgTPMPymfmzAoDPJA030mMJEuf0FCAD3LghZirM=",
         "owner": "logos-blockchain",
         "repo": "logos-execution-zone",
-        "rev": "bafd07be0701398f9bc435f73ab05e9a7936c301",
+        "rev": "41163069d7fb819c2dc8c09453de7d192092d0ec",
         "type": "github"
       },
       "original": {
         "owner": "logos-blockchain",
-        "ref": "v0.4.0-rc3",
+        "ref": "Pravdyvy/shared-accounts-in-ffi",
         "repo": "logos-execution-zone",
         "type": "github"
       }
