@@ -14,8 +14,8 @@
     nix-bundle-lgx.url = "github:logos-co/nix-bundle-lgx?rev=e65d38263f2e1e6bca274d676684350b0fb54185";
     lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
     logos-execution-zone = {
-      # logos-execution-zone#1161 (sequencer setup/start overrides); repin to a tag once released.
-      url = "github:logos-blockchain/logos-execution-zone?rev=9e66839b4f1be4826a005a313979ce6bcaa3eb35";
+      # logos-execution-zone#1161 (sequencer setup/start with JSON options); repin to a tag once released.
+      url = "github:logos-blockchain/logos-execution-zone?rev=969b8a4aa5750417e4b6ba66dd8049b59eb74de2";
       inputs.rust-overlay.follows = "lez-rust-overlay";
     };
   };

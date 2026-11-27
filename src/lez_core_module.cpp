@@ -973,104 +973,7 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
 // === Wallet Lifecycle ===
 
-namespace {
-
-// `SequencerStartOverrides` with the strings it points into, which it borrows. Filled in place and
-// never moved, so the pointers stay valid for the FFI call.
-struct OwnedStartOverrides {
-    std::string config;
-    std::string channel_signing_key_file;
-    std::string funding_public_key;
-    std::string bedrock_node_url;
-    std::string channel_id;
-    std::string rpc_listen_address;
-    std::string metrics_listen_address;
-    std::string gossip_listen_addr;
-    std::vector<std::string> gossip_bootstrap_peers;
-    std::vector<const char*> gossip_bootstrap_peer_ptrs;
-    SequencerStartOverrides ffi{};
-
-    OwnedStartOverrides() = default;
-    OwnedStartOverrides(const OwnedStartOverrides&) = delete;
-    OwnedStartOverrides& operator=(const OwnedStartOverrides&) = delete;
-
-    // Reads `json_args` (empty for none) into this. False, with `error` set, on anything but a
-    // JSON object of the known fields; null leaves a field unset.
-    bool parse(const std::string& json_args, std::string& error) {
-        nlohmann::json args = json_args.empty() ? nlohmann::json::object()
-                                                : nlohmann::json::parse(json_args, nullptr, false);
-        if (!args.is_object()) {
-            error = "start args must be a JSON object";
-            return false;
-        }
-        const std::pair<const char*, std::pair<std::string*, const char**>> strings[] = {
-            {"config", {&config, &ffi.config}},
-            {"channel_signing_key_file", {&channel_signing_key_file, &ffi.channel_signing_key_file}},
-            {"funding_public_key", {&funding_public_key, &ffi.funding_public_key}},
-            {"bedrock_node_url", {&bedrock_node_url, &ffi.bedrock_node_url}},
-            {"channel_id", {&channel_id, &ffi.channel_id}},
-            {"rpc_listen_address", {&rpc_listen_address, &ffi.rpc_listen_address}},
-            {"metrics_listen_address", {&metrics_listen_address, &ffi.metrics_listen_address}},
-            {"gossip_listen_addr", {&gossip_listen_addr, &ffi.gossip_listen_addr}},
-        };
-        const std::pair<const char*, bool*> bools[] = {
-            {"create_channel", &ffi.create_channel},
-            {"wait_for_channel", &ffi.wait_for_channel},
-        };
-        for (const auto& [key, value] : args.items()) {
-            if (value.is_null())
-                continue;
-            bool known = false;
-            for (const auto& [name, field] : strings) {
-                if (key != name)
-                    continue;
-                known = true;
-                if (!value.is_string()) {
-                    error = key + " must be a string";
-                    return false;
-                }
-                *field.first = value.get<std::string>();
-                *field.second = field.first->c_str();
-            }
-            for (const auto& [name, field] : bools) {
-                if (key != name)
-                    continue;
-                known = true;
-                if (!value.is_boolean()) {
-                    error = key + " must be a boolean";
-                    return false;
-                }
-                *field = value.get<bool>();
-            }
-            if (key == "gossip_bootstrap_peers") {
-                known = true;
-                if (!value.is_array()) {
-                    error = "gossip_bootstrap_peers must be an array of strings";
-                    return false;
-                }
-                for (const nlohmann::json& peer : value) {
-                    if (!peer.is_string()) {
-                        error = "gossip_bootstrap_peers must be an array of strings";
-                        return false;
-                    }
-                    gossip_bootstrap_peers.push_back(peer.get<std::string>());
-                }
-            }
-            if (!known) {
-                error = "unknown start arg " + key;
-                return false;
-            }
-        }
-        // Only once every peer is in, so no reallocation moves the strings pointed to.
-        for (const std::string& peer : gossip_bootstrap_peers)
-            gossip_bootstrap_peer_ptrs.push_back(peer.c_str());
-        ffi.gossip_bootstrap_peers = gossip_bootstrap_peer_ptrs.data();
-        ffi.gossip_bootstrap_peers_len = gossip_bootstrap_peer_ptrs.size();
-        return true;
-    }
-};
-
-} // namespace
+// Both pass `json_args` through: core_ffi parses it, refusing unknown fields, and logs why.
 
 std::string LEZCoreModule::setup_sequencer(const std::string& home, const std::string& json_args) {
     const std::string effective_home = home.empty() ? sequencer_dir() : home;
@@ -1079,33 +982,9 @@ std::string LEZCoreModule::setup_sequencer(const std::string& home, const std::s
         return {};
     }
 
-    const nlohmann::json args = nlohmann::json::parse(json_args, nullptr, false);
-    if (!args.is_object() || !args.contains("config") || !args["config"].is_string() ||
-        !args.contains("funding_public_key") || !args["funding_public_key"].is_string()) {
-        fprintf(stderr, "setup_sequencer: json_args needs string `config` and `funding_public_key`\n");
-        return {};
-    }
-    for (const auto& [key, value] : args.items()) {
-        if (key != "config" && key != "funding_public_key" && key != "create_channel") {
-            fprintf(stderr, "setup_sequencer: unknown setup arg %s\n", key.c_str());
-            return {};
-        }
-    }
-    bool create_channel = false;
-    if (args.contains("create_channel")) {
-        if (!args["create_channel"].is_boolean()) {
-            fprintf(stderr, "setup_sequencer: create_channel must be a boolean\n");
-            return {};
-        }
-        create_channel = args["create_channel"].get<bool>();
-    }
-    const std::string config = args["config"].get<std::string>();
-    const std::string funding_public_key = args["funding_public_key"].get<std::string>();
-
     FfiBytes32 channel_public_key{};
-    const FfiOperationError error = sequencer_ffi_setup(
-        effective_home.c_str(), config.c_str(), funding_public_key.c_str(), create_channel, &channel_public_key
-    );
+    const FfiOperationError error =
+        sequencer_ffi_setup(effective_home.c_str(), json_args.c_str(), &channel_public_key);
     if (error != FfiOperationError_Success) {
         fprintf(stderr, "setup_sequencer: sequencer FFI error %d\n", error);
         return {};
@@ -1125,18 +1004,11 @@ int64_t LEZCoreModule::start_sequencer(const std::string& home, const std::strin
         return FfiOperationError_InvalidArgument;
     }
 
-    OwnedStartOverrides overrides;
-    std::string error;
-    if (!overrides.parse(json_args, error)) {
-        fprintf(stderr, "start_sequencer: %s\n", error.c_str());
-        return FfiOperationError_InvalidArgument;
-    }
-
     InitializedSequencerServiceFFIResult start_result = sequencer_ffi_start_sequencer(
         // Null pointer to produce new runtime.
         nullptr,
         effective_home.c_str(),
-        &overrides.ffi
+        json_args.c_str()
     );
     if (!start_result.value) {
         fprintf(stderr, "start_sequencer: sequencer_ffi_start_sequencer returned null\n");

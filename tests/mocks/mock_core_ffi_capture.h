@@ -25,13 +25,10 @@ extern std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
 extern FfiBytes32 lastSelfAccountId;
 extern std::vector<FfiDependency> lastPrograms;
 
-// Last sequencer setup/start's string arguments, copied while the call's pointers were valid;
+// Last sequencer setup/start's home and JSON args, copied while the call's pointers were valid;
 // empty for a null one.
 extern std::string lastSequencerHome;
-extern std::string lastSequencerConfig;
-extern std::string lastSequencerRpcListenAddress;
-extern std::vector<std::string> lastSequencerGossipBootstrapPeers;
-extern bool lastSequencerCreateChannel;
+extern std::string lastSequencerJson;
 
 } // namespace MockWalletFfiCapture
 
