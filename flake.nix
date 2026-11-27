@@ -15,7 +15,7 @@
     lez-rust-overlay.url = "github:oxalica/rust-overlay/b2ccad3b67335d368eef49ec48b9c8166858e73d";
     logos-execution-zone = {
       # logos-execution-zone#1161 (sequencer setup/start with JSON options); repin to a tag once released.
-      url = "github:logos-blockchain/logos-execution-zone?rev=969b8a4aa5750417e4b6ba66dd8049b59eb74de2";
+      url = "github:logos-blockchain/logos-execution-zone?rev=d520501b8e4dab993fe682da6d9e208696f68fb9";
       inputs.rust-overlay.follows = "lez-rust-overlay";
     };
   };
