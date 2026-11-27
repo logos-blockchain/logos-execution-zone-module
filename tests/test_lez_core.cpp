@@ -6,6 +6,9 @@
 #include "mocks/mock_core_ffi_capture.h"
 
 #include <algorithm>
+#include <unistd.h>
+#include <fstream>
+#include <filesystem>
 #include <cstring>
 #include <string>
 
@@ -803,6 +806,29 @@ LOGOS_TEST(setup_sequencer_reports_failure_as_empty) {
     // E.g. an already set up home.
     LOGOS_ASSERT_EQ(module.setup_sequencer("/seq_home", R"({"config": "/c", "funding_public_key": "ab"})"), "");
     LOGOS_ASSERT_EQ(module.setup_sequencer("", "{}"), "");
+}
+
+LOGOS_TEST(is_sequencer_set_up_checks_for_the_setup_config) {
+    LEZCoreModule module;
+    const std::filesystem::path home =
+        std::filesystem::temp_directory_path() / ("lez_core_set_up_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(home);
+    std::filesystem::create_directories(home);
+
+    // Keys alone, as an interrupted setup leaves them, are not set up.
+    std::ofstream(home / "channel_signing_key") << "key";
+    LOGOS_ASSERT_FALSE(module.is_sequencer_set_up(home.string()));
+    std::ofstream(home / "sequencer_config.json") << "{}";
+    LOGOS_ASSERT_TRUE(module.is_sequencer_set_up(home.string()));
+
+    std::filesystem::remove_all(home);
+    LOGOS_ASSERT_FALSE(module.is_sequencer_set_up(home.string()));
+}
+
+// Constructed directly, there is no persistence path for an empty home to default to.
+LOGOS_TEST(is_sequencer_set_up_without_home_or_persistence_path_is_false) {
+    LEZCoreModule module;
+    LOGOS_ASSERT_FALSE(module.is_sequencer_set_up(""));
 }
 
 LOGOS_TEST(sequencer_is_healthy_needs_a_started_healthy_sequencer) {

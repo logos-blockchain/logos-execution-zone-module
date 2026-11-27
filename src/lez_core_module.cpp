@@ -992,6 +992,17 @@ std::string LEZCoreModule::setup_sequencer(const std::string& home, const std::s
     return bytes32ToHex(channel_public_key);
 }
 
+bool LEZCoreModule::is_sequencer_set_up(const std::string& home) {
+    const std::string effective_home = home.empty() ? sequencer_dir() : home;
+    if (effective_home == LEZ_NO_WALLET_DIR)
+        return false;
+    // `sequencer_service`'s CONFIG_FILE: setup writes it last, after the keys, and refuses a home
+    // that has it, so its presence is what "set up" means. An interrupted setup leaves it absent,
+    // and running setup again keeps the existing channel signing key.
+    std::error_code ec;
+    return std::filesystem::exists(std::filesystem::path(effective_home) / "sequencer_config.json", ec);
+}
+
 int64_t LEZCoreModule::start_sequencer(const std::string& home, const std::string& json_args) {
     if (sequencerHandle) {
         fprintf(stderr, "start_sequencer: sequencer is already started\n");

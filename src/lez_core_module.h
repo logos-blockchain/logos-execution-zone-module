@@ -41,6 +41,8 @@ public:
 
     /// Prepares `home` (empty for `sequencer_dir()`) for `start_sequencer`, like `sequencer_service setup`. `json_args`: `{"config": <path>, "funding_public_key": <hex>, "create_channel"?: bool}`. Returns the channel signing public key in hex, the key to stake; empty on failure.
     std::string setup_sequencer(const std::string& home, const std::string& json_args);
+    /// Whether `home` (empty for `sequencer_dir()`) is set up, i.e. `setup_sequencer` wrote its config there; false without a home to check.
+    bool is_sequencer_set_up(const std::string& home);
     /// Starts the sequencer out of `home` (empty for `sequencer_dir()`), like `sequencer_service start`. `json_args` overrides its defaults, passed through to core_ffi (see `sequencer_ffi_start_sequencer`): `config`, `create_channel`, `wait_for_channel`, `channel_signing_key_file`, `funding_public_key`, `bedrock_node_url`, `channel_id`, `rpc_listen_address`, `metrics_listen_address`, `gossip_listen_addr` and `gossip_bootstrap_peers` (an array); empty for none.
     int64_t start_sequencer(const std::string& home, const std::string& json_args);
     int64_t stop_sequencer();
