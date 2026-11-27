@@ -703,7 +703,7 @@ LOGOS_TEST(create_new_success_then_double_open_fails) {
     t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw", false).empty());
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_new"));
     // Second attempt: already open.
@@ -724,7 +724,7 @@ LOGOS_TEST(open_success) {
     t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_EQ(module.open("/cfg", "/store", "password", false), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_open"));
 }
@@ -735,7 +735,7 @@ LOGOS_TEST(get_status_reports_bootstrapping_without_height) {
     t.mockCFunction("sequencer_ffi_query_executor_status").returns(0);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_EQ(module.getStatus(), R"({"height":null,"state":"bootstrapping"})");
 }
 
@@ -745,7 +745,7 @@ LOGOS_TEST(get_status_reports_online_with_height) {
     t.mockCFunction("sequencer_ffi_query_executor_status").returns(7);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_EQ(module.getStatus(), R"({"height":7,"state":"online"})");
 }
 
@@ -755,6 +755,109 @@ LOGOS_TEST(get_status_without_sequencer_is_empty) {
 
     LOGOS_ASSERT_EQ(module.getStatus(), "");
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_query_executor_status"));
+}
+
+// ============================================================================
+// Sequencer lifecycle
+// ============================================================================
+
+LOGOS_TEST(start_sequencer_passes_home_and_overrides) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(
+        module.start_sequencer(
+            "/seq_home",
+            R"({"config": "/etc/seq.json", "create_channel": true, "rpc_listen_address": "0.0.0.0:3040",
+                "metrics_listen_address": null, "gossip_bootstrap_peers": ["seq-1:4040", "seq-2:4040"]})"
+        ),
+        static_cast<int64_t>(FfiOperationError_Success)
+    );
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerHome, "/seq_home");
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerConfig, "/etc/seq.json");
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerRpcListenAddress, "0.0.0.0:3040");
+    LOGOS_ASSERT_TRUE(MockWalletFfiCapture::lastSequencerCreateChannel);
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerGossipBootstrapPeers.size(), static_cast<size_t>(2));
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerGossipBootstrapPeers[1], "seq-2:4040");
+}
+
+LOGOS_TEST(start_sequencer_without_overrides_leaves_them_unset) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerConfig, "");
+    LOGOS_ASSERT_FALSE(MockWalletFfiCapture::lastSequencerCreateChannel);
+    LOGOS_ASSERT_TRUE(MockWalletFfiCapture::lastSequencerGossipBootstrapPeers.empty());
+}
+
+LOGOS_TEST(start_sequencer_rejects_bad_args_without_calling_ffi) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    LEZCoreModule module;
+
+    const auto invalid = static_cast<int64_t>(FfiOperationError_InvalidArgument);
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", R"({"home": "/elsewhere"})"), invalid);
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", R"({"create_channel": "yes"})"), invalid);
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", R"({"gossip_bootstrap_peers": [1]})"), invalid);
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", "not json"), invalid);
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_start_sequencer"));
+}
+
+// Constructed directly, there is no persistence path for an empty home to default to.
+LOGOS_TEST(start_sequencer_without_home_or_persistence_path_fails) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("", ""), static_cast<int64_t>(FfiOperationError_InvalidArgument));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_start_sequencer"));
+}
+
+LOGOS_TEST(setup_sequencer_returns_channel_key_hex) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_setup").returns(static_cast<int>(FfiOperationError_Success));
+    LEZCoreModule module;
+
+    std::string expected;
+    for (int i = 0; i < 32; ++i) expected += "c5";
+    LOGOS_ASSERT_EQ(
+        module.setup_sequencer("/seq_home", R"({"config": "/etc/seq.json", "funding_public_key": "ab", "create_channel": true})"),
+        expected
+    );
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerHome, "/seq_home");
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerConfig, "/etc/seq.json");
+    LOGOS_ASSERT_TRUE(MockWalletFfiCapture::lastSequencerCreateChannel);
+}
+
+LOGOS_TEST(setup_sequencer_rejects_bad_args_and_ffi_errors) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_setup").returns(static_cast<int>(FfiOperationError_ConfigError));
+    LEZCoreModule module;
+
+    // Missing the funding key, or an unknown field: refused before the FFI.
+    LOGOS_ASSERT_EQ(module.setup_sequencer("/seq_home", R"({"config": "/etc/seq.json"})"), "");
+    LOGOS_ASSERT_EQ(
+        module.setup_sequencer("/seq_home", R"({"config": "/c", "funding_public_key": "ab", "extra": 1})"), ""
+    );
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_setup"));
+    // The FFI refusing, e.g. an already set up home.
+    LOGOS_ASSERT_EQ(module.setup_sequencer("/seq_home", R"({"config": "/c", "funding_public_key": "ab"})"), "");
+    LOGOS_ASSERT(t.cFunctionCalled("sequencer_ffi_setup"));
+}
+
+LOGOS_TEST(sequencer_is_healthy_needs_a_started_healthy_sequencer) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    t.mockCFunction("sequencer_ffi_is_healthy").returns(1);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_FALSE(module.sequencer_is_healthy());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_is_healthy"));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_TRUE(module.sequencer_is_healthy());
 }
 
 LOGOS_TEST(save_forwards_return_code) {

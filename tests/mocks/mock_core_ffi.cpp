@@ -23,6 +23,11 @@ namespace MockWalletFfiCapture {
 std::vector<FfiAccountMention> lastMentions;
 std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
 std::vector<FfiDependency> lastPrograms;
+std::string lastSequencerHome;
+std::string lastSequencerConfig;
+std::string lastSequencerRpcListenAddress;
+std::vector<std::string> lastSequencerGossipBootstrapPeers;
+bool lastSequencerCreateChannel = false;
 } // namespace MockWalletFfiCapture
 
 namespace {
@@ -92,9 +97,45 @@ FfiOperationError wallet_ffi_restore_data(WalletHandle*, const char*, uint32_t) 
     return static_cast<FfiOperationError>(err);
 }
 
+static std::string copyOrEmpty(const char* s) {
+    return s ? std::string(s) : std::string();
+}
+
+FfiOperationError sequencer_ffi_setup(const char *home,
+                                      const char *config,
+                                      const char *funding_public_key,
+                                      bool create_channel,
+                                      FfiBytes32 *out_channel_public_key) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_setup");
+    MockWalletFfiCapture::lastSequencerHome = copyOrEmpty(home);
+    MockWalletFfiCapture::lastSequencerConfig = copyOrEmpty(config);
+    MockWalletFfiCapture::lastSequencerCreateChannel = create_channel;
+    const int err = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_setup");
+    if (err == 0 && out_channel_public_key) {
+        memset(out_channel_public_key->data, 0xC5, sizeof(out_channel_public_key->data));
+    }
+    return static_cast<FfiOperationError>(err);
+}
+
+bool sequencer_ffi_is_healthy(const SequencerServiceFFI *sequencer) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_is_healthy");
+    return LOGOS_CMOCK_RETURN(int, "sequencer_ffi_is_healthy") != 0;
+}
+
 InitializedSequencerServiceFFIResult sequencer_ffi_start_sequencer(const Runtime *runtime,
-                                                                   const char *config_path) {
+                                                                   const char *home,
+                                                                   const SequencerStartOverrides *overrides) {
     LOGOS_CMOCK_RECORD("sequencer_ffi_start_sequencer");
+    MockWalletFfiCapture::lastSequencerHome = copyOrEmpty(home);
+    MockWalletFfiCapture::lastSequencerConfig = overrides ? copyOrEmpty(overrides->config) : std::string();
+    MockWalletFfiCapture::lastSequencerRpcListenAddress =
+        overrides ? copyOrEmpty(overrides->rpc_listen_address) : std::string();
+    MockWalletFfiCapture::lastSequencerCreateChannel = overrides && overrides->create_channel;
+    MockWalletFfiCapture::lastSequencerGossipBootstrapPeers.clear();
+    if (overrides) {
+        for (uintptr_t i = 0; i < overrides->gossip_bootstrap_peers_len; ++i)
+            MockWalletFfiCapture::lastSequencerGossipBootstrapPeers.emplace_back(overrides->gossip_bootstrap_peers[i]);
+    }
     const int ok = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_start_sequencer");
     InitializedSequencerServiceFFIResult res;
     res.error = static_cast<FfiOperationError>(ok);

@@ -39,9 +39,13 @@ public:
     std::string wallet_dir();
     std::string sequencer_dir();
 
-    bool override_sequencer_home(const std::string& config_path);
-    int64_t start_sequencer(const std::string& config_path);
+    /// Prepares `home` (empty for `sequencer_dir()`) for `start_sequencer`, like `sequencer_service setup`. `json_args`: `{"config": <path>, "funding_public_key": <hex>, "create_channel"?: bool}`. Returns the channel signing public key in hex, the key to stake; empty on failure.
+    std::string setup_sequencer(const std::string& home, const std::string& json_args);
+    /// Starts the sequencer out of `home` (empty for `sequencer_dir()`), like `sequencer_service start`. `json_args` overrides its defaults: `config`, `create_channel`, `wait_for_channel`, `channel_signing_key_file`, `funding_public_key`, `bedrock_node_url`, `channel_id`, `rpc_listen_address`, `metrics_listen_address`, `gossip_listen_addr` and `gossip_bootstrap_peers` (an array); empty for none.
+    int64_t start_sequencer(const std::string& home, const std::string& json_args);
     int64_t stop_sequencer();
+    /// Whether every task of the started sequencer is still running; false when none is.
+    bool sequencer_is_healthy();
     void init_logger(const std::string& level);
 
     std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password, bool force_rpc);
