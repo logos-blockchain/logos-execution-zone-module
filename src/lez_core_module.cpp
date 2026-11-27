@@ -377,6 +377,67 @@ LogosList LEZCoreModule::list_accounts() {
     return result;
 }
 
+std::string LEZCoreModule::create_sealing_key() {
+    char* out_sealing_public_key{};
+    const FfiOperationError error = wallet_ffi_create_sealing_key(walletHandle, &out_sealing_public_key);
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "create_sealing_key: wallet FFI error %d\n", error);
+        return "";
+    }
+    std::string sealing_key(out_sealing_public_key);
+    return sealing_key;
+}
+
+int64_t LEZCoreModule::create_group(const std::string& label) {
+    const FfiOperationError error = wallet_ffi_create_sealing_key(walletHandle, label.c_str());
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "create_group: wallet FFI error %d\n", error);
+        return error;
+    }
+    return FfiOperationError_Success;
+}
+
+std::string LEZCoreModule::create_private_shared_account(const std::string& group_label, const std::vector<uint8_t>& derivation_id) {
+    FfiBytes32 out_account_id{};
+    // TODO: Right now unused. Maybe return JSON.
+    FfiPrivateAccountKeys out_account_keys{};
+
+    if (derivation_id.size() != 32) {
+        fprintf(stderr, "create_private_shared_account: derivation id length mismatch, size must be 32, it is %d\n", derivation_id.size());
+        return "";
+    }
+
+    FfiBytes32 derivation_id_ffi{};
+    std::copy(derivation_id.begin(), derivation_id.end(), derivation_id_ffi.data);
+
+    const FfiOperationError error = wallet_ffi_create_private_shared_account(walletHandle, group_label.c_str(), derivation_id_ffi, &out_account_id, &out_account_keys);
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "create_private_shared_account: wallet FFI error %d\n", error);
+        return "";
+    }
+    return bytes32ToHex(out_account_id);
+}
+
+std::string LEZCoreModule::invite(const std::string& sealing_public_key, const std::string& invitee_label) {
+    char* out_sealed_message{};
+    const FfiOperationError error = wallet_ffi_join_shared_account(walletHandle, sealed_message.c_str(), joiner_label.c_str(), &out_sealed_message);
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "join: wallet FFI error %d\n", error);
+        return "";
+    }
+    std::string sealed_message(out_sealed_message);
+    return sealed_message;
+}
+
+int64_t LEZCoreModule::join(const std::string& sealed_message, const std::string& joiner_label) {
+    const FfiOperationError error = wallet_ffi_join_shared_account(walletHandle, sealed_message.c_str(), joiner_label.c_str());
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "join: wallet FFI error %d\n", error);
+        return error;
+    }
+    return FfiOperationError_Success;
+}
+
 // === Account Queries ===
 
 std::string LEZCoreModule::get_balance(const std::string& account_id_hex, const bool is_public) {
