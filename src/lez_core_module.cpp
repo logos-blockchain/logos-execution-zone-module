@@ -430,19 +430,20 @@ std::string LEZCoreModule::get_account_private(const std::string& account_id_hex
     return result;
 }
 
-std::string LEZCoreModule::get_public_account_key(const std::string& account_id_hex) {
+std::string LEZCoreModule::get_public_account_initial_key(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
-        fprintf(stderr, "get_public_account_key: invalid account_id_hex\n");
+        fprintf(stderr, "get_public_account_initial_key: invalid account_id_hex\n");
         return {};
     }
-    FfiPublicAccountKey key{};
-    const FfiOperationError error = wallet_ffi_get_public_account_key(walletHandle, &id, &key);
+    FfiSigningKeyState key{};
+    const FfiOperationError error = wallet_ffi_get_public_account_initial_key(walletHandle, &id, &key);
     if (error != FfiOperationError_Success) {
-        fprintf(stderr, "get_public_account_key: wallet FFI error %d\n", error);
+        fprintf(stderr, "get_public_account_initial_key: wallet FFI error %d\n", error);
         return {};
     }
-    return bytes32ToHex(key.public_key);
+    // Schnorr is the only key type, so the commitment alone identifies the key.
+    return bytes32ToHex(key.key_commitment);
 }
 
 std::string LEZCoreModule::get_private_account_keys(const std::string& account_id_hex) {
@@ -1509,17 +1510,17 @@ std::string LEZCoreModule::getStatus() {
         return {};
     }
 
-    // The FFI builds the status JSON itself (schema owned by sequencer_core), so
-    // there is nothing to marshal — copy the C string out and free it.
-    char* json = sequencer_ffi_query_status(sequencerHandle);
-    if (!json) {
-        fprintf(stderr, "getStatus failed : sequencer FFI error \n");
+    // Returned inline, nothing to free.
+    const ExecutorStatusResult res = sequencer_ffi_query_executor_status(sequencerHandle);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getStatus failed : sequencer FFI error %d\n", res.error);
         return {};
     }
 
-    primitives_ffi_free_cstring(json);
-    // TODO: Not implemented yet. Return json string when implemented.
-    return "Not supported";
+    nlohmann::json status;
+    status["state"] = res.state == FfiExecutorState_Online ? "online" : "bootstrapping";
+    status["height"] = res.has_height ? nlohmann::json(res.height) : nlohmann::json(nullptr);
+    return jsonToCompactString(status);
 }
 
 std::string LEZCoreModule::getTransactionsByAccount(

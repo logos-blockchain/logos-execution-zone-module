@@ -221,12 +221,14 @@ namespace marshalling {
             obj["program_account_id"] = bytes32ToBase58(body->message.root.to.program_account_id.data, 32);
 
             nlohmann::json accounts = nlohmann::json::array();
-            const FfiActorList& actors = body->message.public_context.actors;
+            const FfiDeclaredActorList& actors = body->message.public_context.actors;
             const FfiNonceList& nonces = body->message.nonces;
             for (uintptr_t i = 0; i < actors.len; ++i) {
+                const FfiActor& actor = actors.entries[i].actor;
                 nlohmann::json ref;
-                ref["account_id"] = bytes32ToBase58(actors.entries[i].account_id.data, 32);
-                ref["program_account_id"] = bytes32ToBase58(actors.entries[i].program_account_id.data, 32);
+                ref["account_id"] = bytes32ToBase58(actor.account_id.data, 32);
+                ref["program_account_id"] = bytes32ToBase58(actor.program_account_id.data, 32);
+                ref["signer"] = actors.entries[i].signer;
                 ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].nonce.data) : std::string("0");
                 accounts.push_back(ref);
             }
@@ -261,12 +263,14 @@ namespace marshalling {
             obj["hash"] = bytesToHex(body->hash.data, 32);
 
             nlohmann::json accounts = nlohmann::json::array();
-            const FfiActorList& actors = body->message.public_context.actors;
+            const FfiDeclaredActorList& actors = body->message.public_context.actors;
             const FfiNonceList& nonces = body->message.nonces;
             for (uintptr_t i = 0; i < actors.len; ++i) {
+                const FfiActor& actor = actors.entries[i].actor;
                 nlohmann::json ref;
-                ref["account_id"] = bytes32ToBase58(actors.entries[i].account_id.data, 32);
-                ref["program_account_id"] = bytes32ToBase58(actors.entries[i].program_account_id.data, 32);
+                ref["account_id"] = bytes32ToBase58(actor.account_id.data, 32);
+                ref["program_account_id"] = bytes32ToBase58(actor.program_account_id.data, 32);
+                ref["signer"] = actors.entries[i].signer;
                 ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].nonce.data) : std::string("0");
                 accounts.push_back(ref);
             }

@@ -152,13 +152,13 @@ LOGOS_TEST(get_account_public_invalid_hex_returns_empty) {
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_account_public"));
 }
 
-LOGOS_TEST(get_public_account_key_returns_hex) {
+LOGOS_TEST(get_public_account_initial_key_returns_hex) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
 
     std::string expected;
     for (int i = 0; i < 32; ++i) expected += "be";
-    LOGOS_ASSERT_EQ(module.get_public_account_key(VALID_ID), expected);
+    LOGOS_ASSERT_EQ(module.get_public_account_initial_key(VALID_ID), expected);
 }
 
 LOGOS_TEST(get_private_account_keys_returns_json) {
@@ -727,6 +727,34 @@ LOGOS_TEST(open_success) {
     LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_EQ(module.open("/cfg", "/store", "password", false), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_open"));
+}
+
+LOGOS_TEST(get_status_reports_bootstrapping_without_height) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    t.mockCFunction("sequencer_ffi_query_executor_status").returns(0);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.getStatus(), R"({"height":null,"state":"bootstrapping"})");
+}
+
+LOGOS_TEST(get_status_reports_online_with_height) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    t.mockCFunction("sequencer_ffi_query_executor_status").returns(7);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.getStatus(), R"({"height":7,"state":"online"})");
+}
+
+LOGOS_TEST(get_status_without_sequencer_is_empty) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.getStatus(), "");
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_query_executor_status"));
 }
 
 LOGOS_TEST(save_forwards_return_code) {

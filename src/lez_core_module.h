@@ -60,7 +60,7 @@ public:
     std::string get_balance(const std::string& account_id_hex, bool is_public);
     std::string get_account_public(const std::string& account_id_hex);
     std::string get_account_private(const std::string& account_id_hex);
-    std::string get_public_account_key(const std::string& account_id_hex);
+    std::string get_public_account_initial_key(const std::string& account_id_hex);
     std::string get_private_account_keys(const std::string& account_id_hex);
 
     // === Account Encoding ===
@@ -150,9 +150,9 @@ public:
     std::string getBlocks(const std::string& before, const std::string& limit);
     /// Tip block id as a bare decimal string.
     std::string getLastFinalizedBlockId();
-    /// Current ingestion status of an underlying sequencer. Empty string if the
+    /// Current ingestion status of an underlying sequencer, as
+    /// `{"state": "bootstrapping"|"online", "height": <n>|null}`. Empty string if the
     /// sequencer isn't running.
-    /// TODO: Not implemented yet. Update with parsing whn implemented. 
     std::string getStatus();
     /// Transactions touching `account_id` (Base58 or 32-byte hex), paginated by
     /// decimal `offset`/`limit`.
