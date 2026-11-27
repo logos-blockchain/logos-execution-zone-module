@@ -5,6 +5,7 @@
 // inspect call arguments. The transfer_shielded/transfer_private identifier logic
 // needs the latter, so capture the relevant args here in plain static storage.
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -29,6 +30,21 @@ extern std::vector<FfiDependency> lastPrograms;
 // empty for a null one.
 extern std::string lastSequencerHome;
 extern std::string lastSequencerJson;
+
+// The wallet's sticky fee settings: as they are now, and as they were when the last send ran.
+struct FeeSettings {
+    bool dry_run = false;
+    bool allow_revert = false;
+    bool has_fee_params = false;
+    FfiFeeParams fee_params{};
+};
+// While set, sequencer_ffi_start_sequencer does not return.
+extern std::atomic<bool> holdSequencerStart;
+extern std::atomic<int> sequencerStartsFinished;
+extern std::atomic<int> sequencerStops;
+
+extern FeeSettings feeSettings;
+extern FeeSettings feeSettingsAtLastSend;
 
 } // namespace MockWalletFfiCapture
 

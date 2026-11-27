@@ -16,6 +16,8 @@ extern "C" {
 
 #include "mock_core_ffi_capture.h"
 
+#include <chrono>
+#include <thread>
 #include <cstdlib>
 #include <cstring>
 
@@ -25,6 +27,11 @@ std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
 std::vector<FfiDependency> lastPrograms;
 std::string lastSequencerHome;
 std::string lastSequencerJson;
+FeeSettings feeSettings;
+std::atomic<bool> holdSequencerStart{false};
+std::atomic<int> sequencerStartsFinished{0};
+std::atomic<int> sequencerStops{0};
+FeeSettings feeSettingsAtLastSend;
 } // namespace MockWalletFfiCapture
 
 namespace {
@@ -39,9 +46,17 @@ FfiAccountListEntry g_accountEntries[8];
 // Fill a transfer result based on the mocked error code for `key`.
 FfiOperationError fillTransferResult(const char* key, FfiTransferResult* out_result) {
     const int err = LogosCMockStore::instance().getReturn<int>(key);
+    const MockWalletFfiCapture::FeeSettings& settings = MockWalletFfiCapture::feeSettings;
+    MockWalletFfiCapture::feeSettingsAtLastSend = settings;
     if (out_result) {
         out_result->success = (err == 0);
-        if (err == 0) {
+        if (err == 0 && settings.dry_run) {
+            out_result->tx_hash = nullptr;
+            out_result->is_dry_run = true;
+            out_result->dry_run.fee_at_head.data[0] = 42;
+            out_result->fee.kind = FfiFeeKind_Public;
+            out_result->fee.public_fee.gas_limit = settings.fee_params.gas_limit;
+        } else if (err == 0) {
             const char* tx = LogosCMockStore::instance().getReturnString("transfer_tx_hash");
             // getReturnString yields "" (non-null) when unset; fall back to a default.
             out_result->tx_hash = strdup((tx && *tx) ? tx : "0xmocktxhash");
@@ -126,12 +141,20 @@ InitializedSequencerServiceFFIResult sequencer_ffi_start_sequencer(const Runtime
     InitializedSequencerServiceFFIResult res;
     res.error = static_cast<FfiOperationError>(ok);
     res.value = ok ? reinterpret_cast<SequencerServiceFFI*>(&g_fakeSequencer) : nullptr;
+    while (MockWalletFfiCapture::holdSequencerStart) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ++MockWalletFfiCapture::sequencerStartsFinished;
     return res;
 }
 
 FfiOperationError sequencer_ffi_stop_sequencer(SequencerServiceFFI *sequencer) {
     LOGOS_CMOCK_RECORD("sequencer_ffi_stop_sequencer");
-    return static_cast<FfiOperationError>(LOGOS_CMOCK_RETURN(int, "sequencer_ffi_stop_sequencer"));
+    const int err = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_stop_sequencer");
+    // Counted last: an abandoned start calls this from its own thread, and a test waiting on the
+    // counter must not touch the (unsynchronised) mock store before this call is done with it.
+    ++MockWalletFfiCapture::sequencerStops;
+    return static_cast<FfiOperationError>(err);
 }
 
 void sequencer_ffi_init_logger(const char *level) {
@@ -420,6 +443,43 @@ FfiOperationError wallet_ffi_get_current_block_height(WalletHandle*, uint64_t* o
 
 // === Transfers / registration ===
 
+// === Fees ===
+
+FfiOperationError wallet_ffi_set_dry_run(WalletHandle*, bool dry_run) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_set_dry_run");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_set_dry_run");
+    if (err == 0) MockWalletFfiCapture::feeSettings.dry_run = dry_run;
+    return static_cast<FfiOperationError>(err);
+}
+
+FfiOperationError wallet_ffi_set_fee_params(WalletHandle*, const FfiFeeParams* params) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_set_fee_params");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_set_fee_params");
+    if (err == 0) {
+        MockWalletFfiCapture::feeSettings.has_fee_params = params != nullptr;
+        MockWalletFfiCapture::feeSettings.fee_params = params ? *params : FfiFeeParams{};
+    }
+    return static_cast<FfiOperationError>(err);
+}
+
+FfiOperationError wallet_ffi_set_allow_revert(WalletHandle*, bool allow_revert) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_set_allow_revert");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_set_allow_revert");
+    if (err == 0) MockWalletFfiCapture::feeSettings.allow_revert = allow_revert;
+    return static_cast<FfiOperationError>(err);
+}
+
+FfiOperationError wallet_ffi_get_fee_state(WalletHandle*, FfiFeeState* out_fee_state) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_get_fee_state");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_fee_state");
+    if (err == 0 && out_fee_state) {
+        *out_fee_state = FfiFeeState{};
+        out_fee_state->height = 10;
+        out_fee_state->base_fee_exec = 3;
+    }
+    return static_cast<FfiOperationError>(err);
+}
+
 FfiOperationError wallet_ffi_transfer_public(
     WalletHandle*, const FfiBytes32*, const FfiBytes32*, const uint8_t (*)[16], FfiTransferResult* out_result) {
     LOGOS_CMOCK_RECORD("wallet_ffi_transfer_public");
@@ -694,6 +754,19 @@ PointerResult_FfiOption_FfiTransaction_____FfiOperationError sequencer_ffi_query
     return res;
 }
 
+PointerResult_u64__FfiOperationError sequencer_ffi_query_block_by_tx_hash(const SequencerServiceFFI *sequencer,
+                                                                             FfiHashType tx_hash) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_block_by_tx_hash");
+    PointerResult_u64__FfiOperationError res;
+    res.value = nullptr;
+    res.error = FfiOperationError_InternalError;
+    return res;
+}
+
+void sequencer_ffi_free_query_block_id_by_transaction(uint64_t *val) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_free_query_block_id_by_transaction");
+}
+
 void primitives_ffi_free_ffi_transaction_opt(FfiOption_FfiTransaction *val) {
     LOGOS_CMOCK_RECORD("primitives_ffi_free_ffi_transaction_opt");
 }
@@ -732,13 +805,17 @@ LastBlockIdResult sequencer_ffi_query_last_block(const SequencerServiceFFI *sequ
 
 ExecutorStatusResult sequencer_ffi_query_executor_status(const SequencerServiceFFI *sequencer) {
     LOGOS_CMOCK_RECORD("sequencer_ffi_query_executor_status");
-    // The mocked return is the height; zero leaves the executor bootstrapping with none yet.
-    const int height = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_query_executor_status");
+    const int err = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_query_executor_status");
     ExecutorStatusResult res{};
-    res.error = FfiOperationError_Success;
-    res.state = height > 0 ? FfiExecutorState_Online : FfiExecutorState_Bootstrapping;
-    res.has_height = height > 0;
-    res.height = static_cast<FfiBlockId>(height);
+    if (err == 0) {
+        res.state = FfiExecutorState_Online;
+        res.height = 10;
+        res.has_height = true;
+        res.is_our_turn = true;
+        res.error = FfiOperationError_Success;
+    } else {
+        res.error = FfiOperationError_InternalError;
+    }
     return res;
 }
 

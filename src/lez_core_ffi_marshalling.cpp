@@ -207,6 +207,50 @@ namespace marshalling {
         return hexToBytes32(account_id, out);
     }
 
+    namespace {
+        nlohmann::json declaredActorsToJson(const FfiDeclaredActorList& actors, const FfiNonceList& nonces) {
+            nlohmann::json accounts = nlohmann::json::array();
+            for (uintptr_t i = 0; i < actors.len; ++i) {
+                const FfiDeclaredActor& declared = actors.entries[i];
+                nlohmann::json ref;
+                ref["account_id"] = bytes32ToBase58(declared.actor.account_id.data, 32);
+                ref["program_account_id"] = bytes32ToBase58(declared.actor.program_account_id.data, 32);
+                ref["signer"] = declared.signer;
+                // Only the signing accounts have one; the list is keyed by account, not parallel.
+                ref["nonce"] = nullptr;
+                for (uintptr_t n = 0; n < nonces.len; ++n) {
+                    if (std::memcmp(nonces.entries[n].account_id.data, declared.actor.account_id.data, 32) == 0) {
+                        ref["nonce"] = u128LeToDecimal(nonces.entries[n].nonce.data);
+                        break;
+                    }
+                }
+                accounts.push_back(ref);
+            }
+            return accounts;
+        }
+
+        // Declared fee (payer + caps), not the amount charged; that is in the block's receipt.
+        nlohmann::json feeDeclarationToJson(const FfiFeeDeclaration& fee) {
+            nlohmann::json obj;
+            obj["payer"] = bytes32ToBase58(fee.payer.data, 32);
+            obj["gas_limit"] = u64ToString(fee.gas_limit);
+            obj["tip"] = u64ToString(fee.tip);
+            obj["max_fee"] = u128LeToDecimal(fee.max_fee.data);
+            return obj;
+        }
+
+        nlohmann::json receiptToJson(const FfiTransactionReceipt& receipt) {
+            nlohmann::json obj;
+            obj["success"] = receipt.success;
+            obj["gas_exec"] = u64ToString(receipt.fee.gas_exec);
+            obj["gas_stor"] = u64ToString(receipt.fee.gas_stor);
+            obj["fee_base"] = u128LeToDecimal(receipt.fee.fee_base.data);
+            obj["tip"] = u128LeToDecimal(receipt.fee.tip.data);
+            obj["refund"] = u128LeToDecimal(receipt.fee.refund.data);
+            return obj;
+        }
+    } // namespace
+
     nlohmann::json ffiTransactionToJson(const FfiTransaction& tx) {
         nlohmann::json obj;
 
@@ -220,38 +264,15 @@ namespace marshalling {
             obj["hash"] = bytesToHex(body->hash.data, 32);
             obj["program_account_id"] = bytes32ToBase58(body->message.root.to.program_account_id.data, 32);
 
-            nlohmann::json accounts = nlohmann::json::array();
-            const FfiDeclaredActorList& actors = body->message.public_context.actors;
-            const FfiNonceList& nonces = body->message.nonces;
-            for (uintptr_t i = 0; i < actors.len; ++i) {
-                const FfiActor& actor = actors.entries[i].actor;
-                nlohmann::json ref;
-                ref["account_id"] = bytes32ToBase58(actor.account_id.data, 32);
-                ref["program_account_id"] = bytes32ToBase58(actor.program_account_id.data, 32);
-                ref["signer"] = actors.entries[i].signer;
-                ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].nonce.data) : std::string("0");
-                accounts.push_back(ref);
-            }
-            obj["accounts"] = accounts;
+            obj["accounts"] = declaredActorsToJson(body->message.public_context.actors, body->message.nonces);
 
             // Raw message bytes as hex.
-            const FfiMessageDataList& messsage = body->message.root.message;    
+            const FfiMessageDataList& messsage = body->message.root.message;
             obj["message"] = bytesToHex(messsage.entries, messsage.len);
             obj["signature_count"] = static_cast<int>(body->witness_set.len);
 
-            // Declared fee (payer + caps), not the amount actually charged.
-            // Absent (null) for fee-exempt/system transactions.
-            if (body->message.has_fee) {
-                const FfiFeeDeclaration& fee = body->message.fee;
-                nlohmann::json feeObj;
-                feeObj["payer"] = bytes32ToBase58(fee.payer.data, 32);
-                feeObj["gas_limit"] = u64ToString(fee.gas_limit);
-                feeObj["tip"] = u64ToString(fee.tip);
-                feeObj["max_fee"] = u128LeToDecimal(fee.max_fee.data);
-                obj["fee"] = feeObj;
-            } else {
-                obj["fee"] = nullptr;
-            }
+            // Null for fee-exempt/system transactions.
+            obj["fee"] = body->message.has_fee ? feeDeclarationToJson(body->message.fee) : nlohmann::json(nullptr);
             break;
         }
         case FfiTransactionKind_Private: {
@@ -262,19 +283,23 @@ namespace marshalling {
             obj["type"] = "PrivacyPreserving";
             obj["hash"] = bytesToHex(body->hash.data, 32);
 
-            nlohmann::json accounts = nlohmann::json::array();
-            const FfiDeclaredActorList& actors = body->message.public_context.actors;
-            const FfiNonceList& nonces = body->message.nonces;
-            for (uintptr_t i = 0; i < actors.len; ++i) {
-                const FfiActor& actor = actors.entries[i].actor;
-                nlohmann::json ref;
-                ref["account_id"] = bytes32ToBase58(actor.account_id.data, 32);
-                ref["program_account_id"] = bytes32ToBase58(actor.program_account_id.data, 32);
-                ref["signer"] = actors.entries[i].signer;
-                ref["nonce"] = i < nonces.len ? u128LeToDecimal(nonces.entries[i].nonce.data) : std::string("0");
-                accounts.push_back(ref);
+            obj["accounts"] = declaredActorsToJson(body->message.public_context.actors, body->message.nonces);
+
+            // Set when a public signer pays; null when the fee is paid inside the proof.
+            obj["fee"] = body->message.has_fee ? feeDeclarationToJson(body->message.fee) : nlohmann::json(nullptr);
+            // Paid inside the proof: the amount and payer stay private.
+            if (body->message.has_proven_fee) {
+                const FfiProvenFee& proven = body->message.proven_fee;
+                nlohmann::json provenObj;
+                provenObj["tip"] = u64ToString(proven.tip);
+                provenObj["refund_to"] = proven.has_refund_to
+                                             ? nlohmann::json(bytes32ToBase58(proven.refund_to.data, 32))
+                                             : nlohmann::json(nullptr);
+                provenObj["has_fallback"] = proven.has_fallback;
+                obj["proven_fee"] = provenObj;
+            } else {
+                obj["proven_fee"] = nullptr;
             }
-            obj["accounts"] = accounts;
 
             // Each private action bundles nullifier + root + commitment +
             // encrypted post-state, so the former per-list counts collapse
@@ -315,9 +340,25 @@ namespace marshalling {
 
         nlohmann::json transactions = nlohmann::json::array();
         for (uintptr_t i = 0; i < block.body.len; ++i) {
-            transactions.push_back(ffiTransactionToJson(block.body.entries[i]));
+            nlohmann::json tx = ffiTransactionToJson(block.body.entries[i]);
+            tx["receipt"] =
+                i < block.receipts.len ? receiptToJson(block.receipts.entries[i]) : nlohmann::json(nullptr);
+            transactions.push_back(tx);
         }
         obj["transactions"] = transactions;
+        return obj;
+    }
+
+    nlohmann::json executorStatusToJson(const ExecutorStatusResult& status) {
+        const auto optional = [](bool has, uint64_t value) {
+            return has ? nlohmann::json(u64ToString(value)) : nlohmann::json(nullptr);
+        };
+        nlohmann::json obj;
+        obj["state"] = status.state == FfiExecutorState_Online ? "Online" : "Bootstrapping";
+        obj["height"] = optional(status.has_height, status.height);
+        obj["target_slot"] = optional(status.has_target_slot, status.target_slot);
+        obj["replayed_up_to_slot"] = optional(status.has_replayed_up_to_slot, status.replayed_up_to_slot);
+        obj["is_our_turn"] = status.is_our_turn;
         return obj;
     }
 
@@ -406,6 +447,172 @@ namespace marshalling {
         return bytesToHex(bytes.data, 32);
     }
 
+    nlohmann::json feeStateToJson(const FfiFeeState& state) {
+        nlohmann::json obj;
+        obj["height"] = u64ToString(state.height);
+        obj["base_fee_exec"] = u64ToString(state.base_fee_exec);
+        obj["base_fee_stor"] = u64ToString(state.base_fee_stor);
+        obj["next_base_fee_exec_floor"] = u64ToString(state.next_base_fee_exec_floor);
+        obj["next_base_fee_exec_ceiling"] = u64ToString(state.next_base_fee_exec_ceiling);
+        obj["next_base_fee_stor_floor"] = u64ToString(state.next_base_fee_stor_floor);
+        obj["next_base_fee_stor_ceiling"] = u64ToString(state.next_base_fee_stor_ceiling);
+        obj["max_gas_exec"] = u64ToString(state.max_gas_exec);
+        obj["max_gas_stor"] = u64ToString(state.max_gas_stor);
+        return obj;
+    }
+
+    namespace {
+        // Decimal string or JSON unsigned number, up to `max`.
+        bool jsonToUint(const nlohmann::json& value, const __uint128_t max, __uint128_t* out) {
+            if (value.is_number_unsigned()) {
+                *out = value.get<uint64_t>();
+                return *out <= max;
+            }
+            if (!value.is_string()) {
+                return false;
+            }
+            const std::string digits = value.get<std::string>();
+            if (digits.empty()) {
+                return false;
+            }
+            __uint128_t acc = 0;
+            for (const char c : digits) {
+                if (c < '0' || c > '9') {
+                    return false;
+                }
+                const __uint128_t digit = static_cast<__uint128_t>(c - '0');
+                if (acc > (max - digit) / 10) {
+                    return false;
+                }
+                acc = acc * 10 + digit;
+            }
+            *out = acc;
+            return true;
+        }
+
+        bool jsonToU64(const nlohmann::json& value, uint64_t* out) {
+            __uint128_t wide = 0;
+            if (!jsonToUint(value, UINT64_MAX, &wide)) {
+                return false;
+            }
+            *out = static_cast<uint64_t>(wide);
+            return true;
+        }
+
+        bool jsonToU128Le(const nlohmann::json& value, FfiU128* out) {
+            __uint128_t wide = 0;
+            if (!jsonToUint(value, ~static_cast<__uint128_t>(0), &wide)) {
+                return false;
+            }
+            for (int i = 0; i < 16; ++i) {
+                out->data[i] = static_cast<uint8_t>(wide >> (i * 8));
+            }
+            return true;
+        }
+
+        bool jsonToAccountId(const nlohmann::json& value, FfiBytes32* out) {
+            return value.is_string() && accountStrToBytes32(value.get<std::string>(), out);
+        }
+
+        nlohmann::json declaredFeeToJson(const FfiDeclaredFee& fee) {
+            switch (fee.kind) {
+            case FfiFeeKind_Public: {
+                nlohmann::json obj = feeDeclarationToJson(fee.public_fee);
+                obj[JsonKeys::Kind] = "public";
+                return obj;
+            }
+            case FfiFeeKind_Private: {
+                nlohmann::json obj;
+                obj[JsonKeys::Kind] = "private";
+                obj["payer"] = bytes32ToBase58(fee.private_fee.payer.data, 32);
+                obj["reserve"] = u128LeToDecimal(fee.private_fee.reserve.data);
+                obj["tip"] = u64ToString(fee.private_fee.tip);
+                obj["refund_to"] = fee.private_fee.has_refund_to
+                                       ? nlohmann::json(bytes32ToBase58(fee.private_fee.refund_to.data, 32))
+                                       : nlohmann::json(nullptr);
+                return obj;
+            }
+            case FfiFeeKind_None:
+            default:
+                return nullptr;
+            }
+        }
+
+        // The fields marked private are zero for a public send, and the other way round.
+        nlohmann::json dryRunReportToJson(const FfiDryRunReport& report) {
+            nlohmann::json obj;
+            obj["fee_state"] = feeStateToJson(report.fee_state);
+            obj["cycles"] = u64ToString(report.cycles);
+            obj["fee_at_head"] = u128LeToDecimal(report.fee_at_head.data);
+            obj["reserve_at_head"] = u128LeToDecimal(report.reserve_at_head.data);
+            obj["wire_bytes"] = u64ToString(report.wire_bytes);
+            obj["revert_reason"] =
+                report.revert_reason ? nlohmann::json(std::string(report.revert_reason)) : nlohmann::json(nullptr);
+            obj["headroom_blocks"] = u64ToString(report.headroom_blocks);
+            obj["exec_ceiling"] = u64ToString(report.exec_ceiling);
+            obj["stor_ceiling"] = u64ToString(report.stor_ceiling);
+            obj["headroom_reserve"] = u128LeToDecimal(report.headroom_reserve.data);
+            obj["claims"] = u64ToString(report.claims);
+            obj["swept"] = u128LeToDecimal(report.swept.data);
+            return obj;
+        }
+
+        // `result` is null on the failure path.
+        template <typename Result> void addFeeOutcome(nlohmann::json& obj, const Result* result) {
+            const bool isDryRun = result && result->is_dry_run;
+            obj["is_dry_run"] = isDryRun;
+            obj["dry_run"] = isDryRun ? dryRunReportToJson(result->dry_run) : nlohmann::json(nullptr);
+            obj["fee"] = result ? declaredFeeToJson(result->fee) : nlohmann::json(nullptr);
+        }
+    } // namespace
+
+    bool jsonToFeeParams(
+        const std::string& json,
+        FfiFeeParams* out,
+        bool* out_allow_revert,
+        std::string* out_error
+    ) {
+        *out = FfiFeeParams{};
+        *out_allow_revert = false;
+
+        const nlohmann::json doc = nlohmann::json::parse(json, nullptr, false);
+        if (doc.is_discarded() || !doc.is_object()) {
+            *out_error = "fee_params_json must be a JSON object";
+            return false;
+        }
+
+        for (const auto& [key, value] : doc.items()) {
+            bool ok = false;
+            if (key == "gas_limit") {
+                ok = out->has_gas_limit = jsonToU64(value, &out->gas_limit);
+            } else if (key == "max_fee") {
+                ok = out->has_max_fee = jsonToU128Le(value, &out->max_fee);
+            } else if (key == "tip") {
+                ok = jsonToU64(value, &out->tip);
+            } else if (key == "headroom_blocks") {
+                ok = out->has_headroom_blocks = jsonToU64(value, &out->headroom_blocks);
+            } else if (key == "payer") {
+                ok = out->has_payer = jsonToAccountId(value, &out->payer);
+            } else if (key == "refund_to") {
+                ok = out->has_refund_to = jsonToAccountId(value, &out->refund_to);
+            } else if (key == "payer_is_public") {
+                ok = value.is_boolean();
+                out->payer_is_public = ok && value.get<bool>();
+            } else if (key == "allow_revert") {
+                ok = value.is_boolean();
+                *out_allow_revert = ok && value.get<bool>();
+            } else {
+                *out_error = "unknown fee_params_json key \"" + key + "\"";
+                return false;
+            }
+            if (!ok) {
+                *out_error = "invalid fee_params_json \"" + key + "\"";
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Builds JSON { success, tx_hash, error } for both success (result + empty error) and failure (nullptr +
     // errorMessage).
     std::string transferResultToJson(const FfiTransferResult* result, const std::string& errorMessage) {
@@ -413,6 +620,7 @@ namespace marshalling {
         const bool isError = !errorMessage.empty();
         obj[JsonKeys::Success] = !isError && result && result->success;
         obj[JsonKeys::TxHash] = (!isError && result && result->tx_hash) ? std::string(result->tx_hash) : std::string();
+        addFeeOutcome(obj, isError ? nullptr : result);
         obj[JsonKeys::Error] = errorMessage;
         return obj.dump();
     }
@@ -431,6 +639,7 @@ namespace marshalling {
             }
         }
         obj[JsonKeys::Secrets] = secrets;
+        addFeeOutcome(obj, isError ? nullptr : result);
         obj[JsonKeys::Error] = errorMessage;
         return obj.dump();
     }

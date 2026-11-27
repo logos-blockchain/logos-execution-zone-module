@@ -2,6 +2,10 @@
 #include "lez_core_ffi_marshalling.h"
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -173,6 +177,71 @@ namespace {
         return true;
     }
 
+    // Applies one send's fee overrides and dry-run to the wallet and clears them on scope exit,
+    // so they never leak into another caller's send. Do not send when `error()` is set.
+    class SendOptions {
+    public:
+        SendOptions(WalletHandle* handle, const std::string& fee_params_json, const bool dry_run) : handle(handle) {
+            if (!fee_params_json.empty()) {
+                FfiFeeParams params{};
+                bool allow_revert = false;
+                if (!jsonToFeeParams(fee_params_json, &params, &allow_revert, &message)) {
+                    return;
+                }
+                if (!apply(wallet_ffi_set_fee_params(handle, &params), fee_params_set, "fee params")) {
+                    return;
+                }
+                if (allow_revert && !apply(wallet_ffi_set_allow_revert(handle, true), allow_revert_set, "allow_revert")) {
+                    return;
+                }
+            }
+            if (dry_run) {
+                apply(wallet_ffi_set_dry_run(handle, true), dry_run_set, "dry run");
+            }
+        }
+
+        ~SendOptions() {
+            if (dry_run_set) {
+                restore(wallet_ffi_set_dry_run(handle, false), "dry run");
+            }
+            if (allow_revert_set) {
+                restore(wallet_ffi_set_allow_revert(handle, false), "allow_revert");
+            }
+            if (fee_params_set) {
+                restore(wallet_ffi_set_fee_params(handle, nullptr), "fee params");
+            }
+        }
+
+        SendOptions(const SendOptions&) = delete;
+        SendOptions& operator=(const SendOptions&) = delete;
+
+        const std::string& error() const {
+            return message;
+        }
+
+    private:
+        bool apply(const FfiOperationError error, bool& flag, const char* what) {
+            if (error != FfiOperationError_Success) {
+                message = std::string("failed to set ") + what + ": wallet FFI error " + std::to_string(error);
+                return false;
+            }
+            flag = true;
+            return true;
+        }
+
+        static void restore(const FfiOperationError error, const char* what) {
+            if (error != FfiOperationError_Success) {
+                fprintf(stderr, "failed to clear %s: wallet FFI error %d\n", what, error);
+            }
+        }
+
+        WalletHandle* handle;
+        std::string message;
+        bool fee_params_set = false;
+        bool allow_revert_set = false;
+        bool dry_run_set = false;
+    };
+
     // Shared by both generic private sends, which differ only in how they resolve their accounts.
     std::string sendGenericPrivateTransaction(
         WalletHandle* wallet_handle,
@@ -184,8 +253,15 @@ namespace {
         const std::string& program_kind_json,
         const std::vector<std::vector<uint8_t>>& program_dependencies,
         const std::vector<std::string>& dependency_kinds_json,
-        const std::vector<std::string>& actor_state_program_account_ids_hex
+        const std::vector<std::string>& actor_state_program_account_ids_hex,
+        const std::string& fee_params_json,
+        const bool dry_run
     ) {
+        const SendOptions options(wallet_handle, fee_params_json, dry_run);
+        if (!options.error().empty()) {
+            return transferResultToJson(nullptr, std::string(method) + ": " + options.error());
+        }
+
         if (dependency_kinds_json.size() != program_dependencies.size()) {
             fprintf(stderr, "%s: dependency_kinds_json size must match program_dependencies\n", method);
             return transferResultToJson(
@@ -302,9 +378,9 @@ LEZCoreModule::~LEZCoreModule() {
         walletHandle = nullptr;
     }
 
-    if (sequencerHandle) {
-        sequencer_ffi_stop_sequencer(sequencerHandle);
-        sequencerHandle = nullptr;
+    adoptSequencerStart(0);
+    if (sequencerHandle || pendingStart) {
+        stop_sequencer();
     }
 }
 
@@ -525,8 +601,15 @@ int64_t LEZCoreModule::get_current_block_height() {
 std::string LEZCoreModule::transfer_public(
     const std::string& from_hex,
     const std::string& to_hex,
-    const std::string& amount_le16_hex
+    const std::string& amount_le16_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "transfer_public: " + options.error());
+    }
+
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_public: invalid account id hex\n");
@@ -553,8 +636,15 @@ std::string LEZCoreModule::transfer_public(
 std::string LEZCoreModule::transfer_shielded(
     const std::string& from_hex,
     const std::string& to_keys_json,
-    const std::string& amount_le16_hex
+    const std::string& amount_le16_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "transfer_shielded: " + options.error());
+    }
+
     FfiBytes32 fromId{};
     if (!hexToBytes32(from_hex, &fromId)) {
         fprintf(stderr, "transfer_shielded: invalid from account id hex\n");
@@ -593,8 +683,15 @@ std::string LEZCoreModule::transfer_shielded(
 std::string LEZCoreModule::transfer_deshielded(
     const std::string& from_hex,
     const std::string& to_hex,
-    const std::string& amount_le16_hex
+    const std::string& amount_le16_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "transfer_deshielded: " + options.error());
+    }
+
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_deshielded: invalid account id hex\n");
@@ -623,8 +720,15 @@ std::string LEZCoreModule::transfer_deshielded(
 std::string LEZCoreModule::transfer_private(
     const std::string& from_hex,
     const std::string& to_keys_json,
-    const std::string& amount_le16_hex
+    const std::string& amount_le16_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "transfer_private: " + options.error());
+    }
+
     FfiBytes32 fromId{};
     if (!hexToBytes32(from_hex, &fromId)) {
         fprintf(stderr, "transfer_private: invalid from account id hex\n");
@@ -660,8 +764,15 @@ std::string LEZCoreModule::transfer_private(
 std::string LEZCoreModule::transfer_shielded_owned(
     const std::string& from_hex,
     const std::string& to_hex,
-    const std::string& amount_le16_hex
+    const std::string& amount_le16_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "transfer_shielded_owned: " + options.error());
+    }
+
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_shielded_owned: invalid account id hex\n");
@@ -694,8 +805,15 @@ std::string LEZCoreModule::transfer_shielded_owned(
 std::string LEZCoreModule::transfer_private_owned(
     const std::string& from_hex,
     const std::string& to_hex,
-    const std::string& amount_le16_hex
+    const std::string& amount_le16_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "transfer_private_owned: " + options.error());
+    }
+
     FfiBytes32 fromId{}, toId{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(to_hex, &toId)) {
         fprintf(stderr, "transfer_private_owned: invalid account id hex\n");
@@ -726,8 +844,15 @@ std::string LEZCoreModule::transfer_private_owned(
 std::string LEZCoreModule::bridge_withdraw(
     const std::string& from_hex,
     const std::string& bedrock_account_pk_hex,
-    const uint64_t amount
+    const uint64_t amount,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "bridge_withdraw: " + options.error());
+    }
+
     FfiBytes32 fromId{}, bedrockAccountPk{};
     if (!hexToBytes32(from_hex, &fromId) || !hexToBytes32(bedrock_account_pk_hex, &bedrockAccountPk)) {
         fprintf(stderr, "bridge_withdraw: invalid account id or bedrock account pk hex\n");
@@ -745,14 +870,31 @@ std::string LEZCoreModule::bridge_withdraw(
     return resultJson;
 }
 
+std::string LEZCoreModule::get_fee_state() {
+    FfiFeeState state{};
+    const FfiOperationError error = wallet_ffi_get_fee_state(walletHandle, &state);
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "get_fee_state: wallet FFI error %d\n", error);
+        return {};
+    }
+    return jsonToCompactString(feeStateToJson(state));
+}
+
 std::string LEZCoreModule::send_generic_public_transaction(
     const std::vector<std::string>& account_ids,
     const uint64_t root_mention,
     const std::vector<bool>& signing_requirements,
     const std::vector<uint8_t>& message,
     const std::string& payer_account_id_hex,
-    const std::vector<std::string>& actor_state_program_account_ids_hex
+    const std::vector<std::string>& actor_state_program_account_ids_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "send_generic_public_transaction: " + options.error());
+    }
+
     if (signing_requirements.size() != account_ids.size()) {
         fprintf(stderr, "send_generic_public_transaction: signing_requirements size must match account_ids\n");
         return transferResultToJson(
@@ -845,7 +987,9 @@ std::string LEZCoreModule::send_generic_private_transaction(
     const std::string& program_kind_json,
     const std::vector<std::vector<uint8_t>>& program_dependencies,
     const std::vector<std::string>& dependency_kinds_json,
-    const std::vector<std::string>& actor_state_program_account_ids_hex
+    const std::vector<std::string>& actor_state_program_account_ids_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
     PrivateSendAccounts accounts;
     std::string error;
@@ -863,7 +1007,9 @@ std::string LEZCoreModule::send_generic_private_transaction(
         program_kind_json,
         program_dependencies,
         dependency_kinds_json,
-        actor_state_program_account_ids_hex
+        actor_state_program_account_ids_hex,
+        fee_params_json,
+        dry_run
     );
 }
 
@@ -875,7 +1021,9 @@ std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
     const std::string& program_kind_json,
     const std::vector<std::vector<uint8_t>>& program_dependencies,
     const std::vector<std::string>& dependency_kinds_json,
-    const std::vector<std::string>& actor_state_program_account_ids_hex
+    const std::vector<std::string>& actor_state_program_account_ids_hex,
+    const std::string& fee_params_json,
+    const bool dry_run
 ) {
     PrivateSendAccounts accounts;
     std::string error;
@@ -897,13 +1045,20 @@ std::string LEZCoreModule::send_generic_private_transaction_with_accounts(
         program_kind_json,
         program_dependencies,
         dependency_kinds_json,
-        actor_state_program_account_ids_hex
+        actor_state_program_account_ids_hex,
+        fee_params_json,
+        dry_run
     );
 }
 
 // clang-format off
-std::string LEZCoreModule::send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex) {
+std::string LEZCoreModule::send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex, const std::string& fee_params_json, bool dry_run) {
     // clang-format on
+    const SendOptions options(walletHandle, fee_params_json, dry_run);
+    if (!options.error().empty()) {
+        return transferResultToJson(nullptr, "send_program_deployment_transaction: " + options.error());
+    }
+
     FfiBytes32 header{};
     if (!hexToBytes32(header_account_id_hex, &header)) {
         fprintf(stderr, "send_program_deployment_transaction: invalid header_account_id_hex\n");
@@ -1003,10 +1158,74 @@ bool LEZCoreModule::is_sequencer_set_up(const std::string& home) {
     return std::filesystem::exists(std::filesystem::path(effective_home) / "sequencer_config.json", ec);
 }
 
+// `sequencer_ffi_start_sequencer` returns only once the sequencer is up, which takes as long as the
+// Bedrock node needs to answer, and it cannot be cancelled. So it runs on its own thread.
+struct LEZCoreModule::SequencerStart {
+    std::mutex mutex;
+    std::condition_variable finished_cv;
+    bool finished = false;
+    // Set by a stop that came first: stop the sequencer as soon as it is up.
+    bool abandoned = false;
+    InitializedSequencerServiceFFIResult result{};
+};
+
+namespace {
+    // How long start_sequencer waits for the start itself, so a bad config or a locked storage is
+    // still reported by its return code and a sequencer with a node at hand is up on return.
+    constexpr int64_t kStartGraceMs = 1000;
+} // namespace
+
+void LEZCoreModule::adoptSequencerStart(const int64_t wait_ms) {
+    if (!pendingStart) {
+        return;
+    }
+    {
+        std::unique_lock<std::mutex> lock(pendingStart->mutex);
+        const bool finished = pendingStart->finished_cv.wait_for(
+            lock, std::chrono::milliseconds(wait_ms), [this] { return pendingStart->finished; }
+        );
+        if (!finished) {
+            return;
+        }
+        sequencerHandle = pendingStart->result.value;
+        if (sequencerHandle) {
+            lastStartError = 0;
+        } else {
+            // A null sequencer is a failure whatever the code says.
+            const FfiOperationError error = pendingStart->result.error;
+            lastStartError = error != FfiOperationError_Success ? error : FfiOperationError_InternalError;
+        }
+    }
+    pendingStart.reset();
+    if (!sequencerHandle) {
+        fprintf(stderr, "start_sequencer: sequencer_ffi_start_sequencer returned null\n");
+    }
+}
+
+bool LEZCoreModule::sequencerStartInFlight() {
+    adoptSequencerStart(0);
+    if (pendingStart) {
+        return true;
+    }
+    if (abandonedStart) {
+        const std::lock_guard<std::mutex> lock(abandonedStart->mutex);
+        if (!abandonedStart->finished) {
+            return true;
+        }
+    }
+    abandonedStart.reset();
+    return false;
+}
+
 int64_t LEZCoreModule::start_sequencer(const std::string& home, const std::string& json_args) {
-    if (sequencerHandle) {
+    adoptSequencerStart(0);
+    if (sequencerHandle || pendingStart) {
         fprintf(stderr, "start_sequencer: sequencer is already started\n");
         return {};
+    }
+    if (sequencerStartInFlight()) {
+        fprintf(stderr, "start_sequencer: the previous start has not finished stopping\n");
+        return FfiOperationError_RuntimeError;
     }
 
     const std::string effective_home = home.empty() ? sequencer_dir() : home;
@@ -1015,27 +1234,45 @@ int64_t LEZCoreModule::start_sequencer(const std::string& home, const std::strin
         return FfiOperationError_InvalidArgument;
     }
 
-    InitializedSequencerServiceFFIResult start_result = sequencer_ffi_start_sequencer(
-        // Null pointer to produce new runtime.
-        nullptr,
-        effective_home.c_str(),
-        json_args.c_str()
-    );
-    if (!start_result.value) {
-        fprintf(stderr, "start_sequencer: sequencer_ffi_start_sequencer returned null\n");
-        return start_result.error;
-    }
+    lastStartError = 0;
+    pendingStart = std::make_shared<SequencerStart>();
+    std::thread([start = pendingStart, effective_home, json_args] {
+        // Null runtime: the sequencer creates and owns one.
+        const InitializedSequencerServiceFFIResult result =
+            sequencer_ffi_start_sequencer(nullptr, effective_home.c_str(), json_args.c_str());
+        const std::lock_guard<std::mutex> lock(start->mutex);
+        if (start->abandoned && result.value) {
+            sequencer_ffi_stop_sequencer(result.value);
+        } else {
+            start->result = result;
+        }
+        start->finished = true;
+        start->finished_cv.notify_all();
+    }).detach();
 
-    sequencerHandle = start_result.value;
-
-    return FfiOperationError_Success;
+    adoptSequencerStart(kStartGraceMs);
+    return lastStartError;
 }
 
 bool LEZCoreModule::sequencer_is_healthy() {
+    adoptSequencerStart(0);
     return sequencerHandle && sequencer_ffi_is_healthy(sequencerHandle);
 }
 
 int64_t LEZCoreModule::stop_sequencer() {
+    if (pendingStart) {
+        std::unique_lock<std::mutex> lock(pendingStart->mutex);
+        if (!pendingStart->finished) {
+            pendingStart->abandoned = true;
+            lock.unlock();
+            abandonedStart = std::move(pendingStart);
+            pendingStart.reset();
+            return FfiOperationError_Success;
+        }
+    }
+    adoptSequencerStart(0);
+    lastStartError = 0;
+
     if (!sequencerHandle) {
         fprintf(stderr, "stop_sequencer: attempting to stop null pointer\n");
         return FfiOperationError_InternalError;
@@ -1058,6 +1295,7 @@ std::string LEZCoreModule::create_new(
     const std::string& password,
     bool force_rpc
 ) {
+    adoptSequencerStart(0);
     if (walletHandle) {
         fprintf(stderr, "create_new: wallet is already open\n");
         return {};
@@ -1098,6 +1336,10 @@ int64_t LEZCoreModule::restore_storage(const std::string& mnemonic, uint64_t dep
 }
 
 int64_t LEZCoreModule::reset_storage(const std::string& config_path, bool clean_wallet_data) {
+    if (sequencerStartInFlight()) {
+        fprintf(stderr, "reset_storage: a sequencer start is still running and holds the storage\n");
+        return FfiOperationError_RuntimeError;
+    }
     // Clean wallet data first, if it was opened and needs to be cleaned, for example for channel id change.
     if (walletHandle && clean_wallet_data) {
         std::error_code ec;
@@ -1161,6 +1403,7 @@ int64_t LEZCoreModule::open(
     const std::string& password,
     bool force_rpc
 ) {
+    adoptSequencerStart(0);
     if (walletHandle) {
         fprintf(stderr, "open: wallet is already open\n");
         return FfiOperationError_InternalError;
@@ -1300,6 +1543,7 @@ std::vector<std::string> LEZCoreModule::get_all_labels_for_account(const std::st
 // pointer (PointerResult.value) and reclaim the whole allocation.
 
 std::string LEZCoreModule::getAccount(const std::string& account_id) {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getAccount failed : sequencer not started \n");
         return {};
@@ -1331,6 +1575,7 @@ std::string LEZCoreModule::getAccount(const std::string& account_id) {
 }
 
 std::string LEZCoreModule::getBlockById(const std::string& block_id) {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getBlockById failed : sequencer not started \n");
         return {};
@@ -1361,6 +1606,7 @@ std::string LEZCoreModule::getBlockById(const std::string& block_id) {
 }
 
 std::string LEZCoreModule::getBlockByHash(const std::string& hash) {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getBlockByHash failed : sequencer not started \n");
         return {};
@@ -1388,7 +1634,44 @@ std::string LEZCoreModule::getBlockByHash(const std::string& hash) {
     return out;
 }
 
+namespace {
+    // A transaction's receipt lives in its block: finds the block and adds "block_id" and
+    // "receipt" to `tx`, both null when the block cannot be found.
+    void attachReceipt(const SequencerServiceFFI* sequencer, nlohmann::json& tx) {
+        tx["block_id"] = nullptr;
+        tx["receipt"] = nullptr;
+
+        FfiHashType hash;
+        if (!tx.contains("hash") || !hexToBytes32(tx["hash"].get<std::string>(), &hash)) {
+            return;
+        }
+        const PointerResult_u64__FfiOperationError idRes = sequencer_ffi_query_block_by_tx_hash(sequencer, hash);
+        if (idRes.error != FfiOperationError_Success || !idRes.value) {
+            return;
+        }
+        const uint64_t blockId = *idRes.value;
+        sequencer_ffi_free_query_block_id_by_transaction(idRes.value);
+
+        const PointerResult_FfiBlockOpt__FfiOperationError blockRes = sequencer_ffi_query_block(sequencer, blockId);
+        if (blockRes.error != FfiOperationError_Success) {
+            return;
+        }
+        if (blockRes.value->is_some) {
+            const nlohmann::json block = ffiBlockToJson(*blockRes.value->value);
+            tx["block_id"] = block["block_id"];
+            for (const auto& candidate : block["transactions"]) {
+                if (candidate["hash"] == tx["hash"]) {
+                    tx["receipt"] = candidate["receipt"];
+                    break;
+                }
+            }
+        }
+        primitives_ffi_free_ffi_block_opt(blockRes.value);
+    }
+} // namespace
+
 std::string LEZCoreModule::getTransaction(const std::string& hash) {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getTransaction failed : sequencer not started \n");
         return {};
@@ -1409,7 +1692,9 @@ std::string LEZCoreModule::getTransaction(const std::string& hash) {
 
     std::string out;
     if (res.value->is_some) {
-        out = jsonToCompactString(ffiTransactionToJson(*res.value->value));
+        nlohmann::json tx = ffiTransactionToJson(*res.value->value);
+        attachReceipt(sequencerHandle, tx);
+        out = jsonToCompactString(tx);
     } else {
         fprintf(stderr, "getTransaction warning : transaction with hash %s not found \n", hash.c_str());
     }
@@ -1418,6 +1703,7 @@ std::string LEZCoreModule::getTransaction(const std::string& hash) {
 }
 
 std::string LEZCoreModule::getBlocks(const std::string& before, const std::string& limit) {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getBlocks failed : sequencer not started \n");
         return {};
@@ -1474,6 +1760,7 @@ std::string LEZCoreModule::getBlocks(const std::string& before, const std::strin
 }
 
 std::string LEZCoreModule::getLastFinalizedBlockId() {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getLastFinalizedBlockId failed : sequencer not started \n");
         return {};
@@ -1490,8 +1777,14 @@ std::string LEZCoreModule::getLastFinalizedBlockId() {
 }
 
 std::string LEZCoreModule::getStatus() {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
-        fprintf(stderr, "getStatus failed : sequencer not started \n");
+        if (pendingStart) {
+            return R"({"state":"Starting"})";
+        }
+        if (lastStartError != 0) {
+            return R"({"state":"StartFailed","error_code":)" + std::to_string(lastStartError) + "}";
+        }
         return {};
     }
 
@@ -1501,11 +1794,7 @@ std::string LEZCoreModule::getStatus() {
         fprintf(stderr, "getStatus failed : sequencer FFI error %d\n", res.error);
         return {};
     }
-
-    nlohmann::json status;
-    status["state"] = res.state == FfiExecutorState_Online ? "online" : "bootstrapping";
-    status["height"] = res.has_height ? nlohmann::json(res.height) : nlohmann::json(nullptr);
-    return jsonToCompactString(status);
+    return jsonToCompactString(executorStatusToJson(res));
 }
 
 std::string LEZCoreModule::getTransactionsByAccount(
@@ -1513,6 +1802,7 @@ std::string LEZCoreModule::getTransactionsByAccount(
     const std::string& offset,
     const std::string& limit
 ) {
+    adoptSequencerStart(0);
     if (!sequencerHandle) {
         fprintf(stderr, "getTransactionsByAccount failed : sequencer not started \n");
         return {};
@@ -1542,7 +1832,9 @@ std::string LEZCoreModule::getTransactionsByAccount(
 
     nlohmann::json arr = nlohmann::json::array();
     for (uintptr_t i = 0; i < res.value->len; ++i) {
-        arr.push_back(ffiTransactionToJson(res.value->entries[i]));
+        nlohmann::json tx = ffiTransactionToJson(res.value->entries[i]);
+        attachReceipt(sequencerHandle, tx);
+        arr.push_back(tx);
     }
     primitives_ffi_free_ffi_transaction_vec(res.value);
     return jsonToCompactString(arr);
