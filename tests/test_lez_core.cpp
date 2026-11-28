@@ -6,6 +6,9 @@
 #include "mocks/mock_core_ffi_capture.h"
 
 #include <algorithm>
+#include <unistd.h>
+#include <fstream>
+#include <filesystem>
 #include <cstring>
 #include <string>
 
@@ -152,13 +155,13 @@ LOGOS_TEST(get_account_public_invalid_hex_returns_empty) {
     LOGOS_ASSERT_FALSE(t.cFunctionCalled("wallet_ffi_get_account_public"));
 }
 
-LOGOS_TEST(get_public_account_key_returns_hex) {
+LOGOS_TEST(get_public_account_initial_key_returns_hex) {
     auto t = LogosTestContext("logos_execution_zone");
     LEZCoreModule module;
 
     std::string expected;
     for (int i = 0; i < 32; ++i) expected += "be";
-    LOGOS_ASSERT_EQ(module.get_public_account_key(VALID_ID), expected);
+    LOGOS_ASSERT_EQ(module.get_public_account_initial_key(VALID_ID), expected);
 }
 
 LOGOS_TEST(get_private_account_keys_returns_json) {
@@ -703,7 +706,7 @@ LOGOS_TEST(create_new_success_then_double_open_fails) {
     t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_TRUE(!module.create_new("/cfg", "/store", "pw", false).empty());
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_create_new"));
     // Second attempt: already open.
@@ -724,9 +727,120 @@ LOGOS_TEST(open_success) {
     t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
     LEZCoreModule module;
 
-    LOGOS_ASSERT_EQ(module.start_sequencer("/cfg_seq"), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT_EQ(module.open("/cfg", "/store", "password", false), static_cast<int64_t>(FfiOperationError_Success));
     LOGOS_ASSERT(t.cFunctionCalled("wallet_ffi_open"));
+}
+
+LOGOS_TEST(get_status_reports_bootstrapping_without_height) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    t.mockCFunction("sequencer_ffi_query_executor_status").returns(0);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.getStatus(), R"({"height":null,"state":"bootstrapping"})");
+}
+
+LOGOS_TEST(get_status_reports_online_with_height) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    t.mockCFunction("sequencer_ffi_query_executor_status").returns(7);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(module.getStatus(), R"({"height":7,"state":"online"})");
+}
+
+LOGOS_TEST(get_status_without_sequencer_is_empty) {
+    auto t = LogosTestContext("logos_execution_zone");
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.getStatus(), "");
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_query_executor_status"));
+}
+
+// ============================================================================
+// Sequencer lifecycle
+// ============================================================================
+
+LOGOS_TEST(start_sequencer_passes_home_and_json_through) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    LEZCoreModule module;
+
+    const std::string overrides = R"({"config": "/etc/seq.json", "create_channel": true})";
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", overrides), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerHome, "/seq_home");
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerJson, overrides);
+}
+
+// Constructed directly, there is no persistence path for an empty home to default to.
+LOGOS_TEST(start_sequencer_without_home_or_persistence_path_fails) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_EQ(module.start_sequencer("", ""), static_cast<int64_t>(FfiOperationError_InvalidArgument));
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_start_sequencer"));
+}
+
+LOGOS_TEST(setup_sequencer_passes_json_through_and_returns_channel_key_hex) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_setup").returns(static_cast<int>(FfiOperationError_Success));
+    LEZCoreModule module;
+
+    const std::string args = R"({"config": "/etc/seq.json", "funding_public_key": "ab"})";
+    std::string expected;
+    for (int i = 0; i < 32; ++i) expected += "c5";
+    LOGOS_ASSERT_EQ(module.setup_sequencer("/seq_home", args), expected);
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerHome, "/seq_home");
+    LOGOS_ASSERT_EQ(MockWalletFfiCapture::lastSequencerJson, args);
+}
+
+LOGOS_TEST(setup_sequencer_reports_failure_as_empty) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_setup").returns(static_cast<int>(FfiOperationError_ConfigError));
+    LEZCoreModule module;
+
+    // E.g. an already set up home.
+    LOGOS_ASSERT_EQ(module.setup_sequencer("/seq_home", R"({"config": "/c", "funding_public_key": "ab"})"), "");
+    LOGOS_ASSERT_EQ(module.setup_sequencer("", "{}"), "");
+}
+
+LOGOS_TEST(is_sequencer_set_up_checks_for_the_setup_config) {
+    LEZCoreModule module;
+    const std::filesystem::path home =
+        std::filesystem::temp_directory_path() / ("lez_core_set_up_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(home);
+    std::filesystem::create_directories(home);
+
+    // Keys alone, as an interrupted setup leaves them, are not set up.
+    std::ofstream(home / "channel_signing_key") << "key";
+    LOGOS_ASSERT_FALSE(module.is_sequencer_set_up(home.string()));
+    std::ofstream(home / "sequencer_config.json") << "{}";
+    LOGOS_ASSERT_TRUE(module.is_sequencer_set_up(home.string()));
+
+    std::filesystem::remove_all(home);
+    LOGOS_ASSERT_FALSE(module.is_sequencer_set_up(home.string()));
+}
+
+// Constructed directly, there is no persistence path for an empty home to default to.
+LOGOS_TEST(is_sequencer_set_up_without_home_or_persistence_path_is_false) {
+    LEZCoreModule module;
+    LOGOS_ASSERT_FALSE(module.is_sequencer_set_up(""));
+}
+
+LOGOS_TEST(sequencer_is_healthy_needs_a_started_healthy_sequencer) {
+    auto t = LogosTestContext("logos_execution_zone");
+    t.mockCFunction("sequencer_ffi_start_sequencer").returns(1);
+    t.mockCFunction("sequencer_ffi_is_healthy").returns(1);
+    LEZCoreModule module;
+
+    LOGOS_ASSERT_FALSE(module.sequencer_is_healthy());
+    LOGOS_ASSERT_FALSE(t.cFunctionCalled("sequencer_ffi_is_healthy"));
+    LOGOS_ASSERT_EQ(module.start_sequencer("/seq_home", ""), static_cast<int64_t>(FfiOperationError_Success));
+    LOGOS_ASSERT_TRUE(module.sequencer_is_healthy());
 }
 
 LOGOS_TEST(save_forwards_return_code) {

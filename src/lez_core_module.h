@@ -39,9 +39,15 @@ public:
     std::string wallet_dir();
     std::string sequencer_dir();
 
-    bool override_sequencer_home(const std::string& config_path);
-    int64_t start_sequencer(const std::string& config_path);
+    /// Prepares `home` (empty for `sequencer_dir()`) for `start_sequencer`, like `sequencer_service setup`. `json_args`: `{"config": <path>, "funding_public_key": <hex>, "create_channel"?: bool}`. Returns the channel signing public key in hex, the key to stake; empty on failure.
+    std::string setup_sequencer(const std::string& home, const std::string& json_args);
+    /// Whether `home` (empty for `sequencer_dir()`) is set up, i.e. `setup_sequencer` wrote its config there; false without a home to check.
+    bool is_sequencer_set_up(const std::string& home);
+    /// Starts the sequencer out of `home` (empty for `sequencer_dir()`), like `sequencer_service start`. `json_args` overrides its defaults, passed through to core_ffi (see `sequencer_ffi_start_sequencer`): `config`, `create_channel`, `wait_for_channel`, `channel_signing_key_file`, `funding_public_key`, `bedrock_node_url`, `channel_id`, `rpc_listen_address`, `metrics_listen_address`, `gossip_listen_addr` and `gossip_bootstrap_peers` (an array); empty for none.
+    int64_t start_sequencer(const std::string& home, const std::string& json_args);
     int64_t stop_sequencer();
+    /// Whether every task of the started sequencer is still running; false when none is.
+    bool sequencer_is_healthy();
     void init_logger(const std::string& level);
 
     std::string create_new(const std::string& config_path, const std::string& storage_path, const std::string& password, bool force_rpc);
@@ -60,7 +66,7 @@ public:
     std::string get_balance(const std::string& account_id_hex, bool is_public);
     std::string get_account_public(const std::string& account_id_hex);
     std::string get_account_private(const std::string& account_id_hex);
-    std::string get_public_account_key(const std::string& account_id_hex);
+    std::string get_public_account_initial_key(const std::string& account_id_hex);
     std::string get_private_account_keys(const std::string& account_id_hex);
 
     // === Account Encoding ===
@@ -150,9 +156,9 @@ public:
     std::string getBlocks(const std::string& before, const std::string& limit);
     /// Tip block id as a bare decimal string.
     std::string getLastFinalizedBlockId();
-    /// Current ingestion status of an underlying sequencer. Empty string if the
+    /// Current ingestion status of an underlying sequencer, as
+    /// `{"state": "bootstrapping"|"online", "height": <n>|null}`. Empty string if the
     /// sequencer isn't running.
-    /// TODO: Not implemented yet. Update with parsing whn implemented. 
     std::string getStatus();
     /// Transactions touching `account_id` (Base58 or 32-byte hex), paginated by
     /// decimal `offset`/`limit`.

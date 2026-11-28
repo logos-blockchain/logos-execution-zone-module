@@ -23,6 +23,8 @@ namespace MockWalletFfiCapture {
 std::vector<FfiAccountMention> lastMentions;
 std::vector<std::vector<uint8_t>> lastViewingPublicKeys;
 std::vector<FfiDependency> lastPrograms;
+std::string lastSequencerHome;
+std::string lastSequencerJson;
 } // namespace MockWalletFfiCapture
 
 namespace {
@@ -92,9 +94,34 @@ FfiOperationError wallet_ffi_restore_data(WalletHandle*, const char*, uint32_t) 
     return static_cast<FfiOperationError>(err);
 }
 
+static std::string copyOrEmpty(const char* s) {
+    return s ? std::string(s) : std::string();
+}
+
+FfiOperationError sequencer_ffi_setup(const char *home,
+                                      const char *args_json,
+                                      FfiBytes32 *out_channel_public_key) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_setup");
+    MockWalletFfiCapture::lastSequencerHome = copyOrEmpty(home);
+    MockWalletFfiCapture::lastSequencerJson = copyOrEmpty(args_json);
+    const int err = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_setup");
+    if (err == 0 && out_channel_public_key) {
+        memset(out_channel_public_key->data, 0xC5, sizeof(out_channel_public_key->data));
+    }
+    return static_cast<FfiOperationError>(err);
+}
+
+bool sequencer_ffi_is_healthy(const SequencerServiceFFI *sequencer) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_is_healthy");
+    return LOGOS_CMOCK_RETURN(int, "sequencer_ffi_is_healthy") != 0;
+}
+
 InitializedSequencerServiceFFIResult sequencer_ffi_start_sequencer(const Runtime *runtime,
-                                                                   const char *config_path) {
+                                                                   const char *home,
+                                                                   const char *overrides_json) {
     LOGOS_CMOCK_RECORD("sequencer_ffi_start_sequencer");
+    MockWalletFfiCapture::lastSequencerHome = copyOrEmpty(home);
+    MockWalletFfiCapture::lastSequencerJson = copyOrEmpty(overrides_json);
     const int ok = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_start_sequencer");
     InitializedSequencerServiceFFIResult res;
     res.error = static_cast<FfiOperationError>(ok);
@@ -310,11 +337,12 @@ void wallet_ffi_free_account_data(FfiAccount* account) {
     }
 }
 
-FfiOperationError wallet_ffi_get_public_account_key(WalletHandle*, const FfiBytes32*, FfiPublicAccountKey* out_key) {
-    LOGOS_CMOCK_RECORD("wallet_ffi_get_public_account_key");
-    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_public_account_key");
-    if (err == 0 && out_key) {
-        memset(out_key->public_key.data, 0xBE, sizeof(out_key->public_key.data));
+FfiOperationError wallet_ffi_get_public_account_initial_key(WalletHandle*, const FfiBytes32*, FfiSigningKeyState* out_initial_key) {
+    LOGOS_CMOCK_RECORD("wallet_ffi_get_public_account_initial_key");
+    const int err = LOGOS_CMOCK_RETURN(int, "wallet_ffi_get_public_account_initial_key");
+    if (err == 0 && out_initial_key) {
+        out_initial_key->key_type = FfiKeyType_Schnorr;
+        memset(out_initial_key->key_commitment.data, 0xBE, sizeof(out_initial_key->key_commitment.data));
     }
     return static_cast<FfiOperationError>(err);
 }
@@ -702,10 +730,16 @@ LastBlockIdResult sequencer_ffi_query_last_block(const SequencerServiceFFI *sequ
     return res;
 }
 
-char *sequencer_ffi_query_status(const SequencerServiceFFI *sequencer) {
-    LOGOS_CMOCK_RECORD("sequencer_ffi_query_status");
-    const char* status = LOGOS_CMOCK_RETURN_STRING("sequencer_ffi_query_status");
-    return strdup((status && *status) ? status : "NotStarted");
+ExecutorStatusResult sequencer_ffi_query_executor_status(const SequencerServiceFFI *sequencer) {
+    LOGOS_CMOCK_RECORD("sequencer_ffi_query_executor_status");
+    // The mocked return is the height; zero leaves the executor bootstrapping with none yet.
+    const int height = LOGOS_CMOCK_RETURN(int, "sequencer_ffi_query_executor_status");
+    ExecutorStatusResult res{};
+    res.error = FfiOperationError_Success;
+    res.state = height > 0 ? FfiExecutorState_Online : FfiExecutorState_Bootstrapping;
+    res.has_height = height > 0;
+    res.height = static_cast<FfiBlockId>(height);
+    return res;
 }
 
 PointerResult_FfiVec_FfiTransaction_____FfiOperationError sequencer_ffi_query_transactions_by_account(const SequencerServiceFFI *sequencer,

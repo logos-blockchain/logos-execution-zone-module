@@ -430,19 +430,20 @@ std::string LEZCoreModule::get_account_private(const std::string& account_id_hex
     return result;
 }
 
-std::string LEZCoreModule::get_public_account_key(const std::string& account_id_hex) {
+std::string LEZCoreModule::get_public_account_initial_key(const std::string& account_id_hex) {
     FfiBytes32 id{};
     if (!hexToBytes32(account_id_hex, &id)) {
-        fprintf(stderr, "get_public_account_key: invalid account_id_hex\n");
+        fprintf(stderr, "get_public_account_initial_key: invalid account_id_hex\n");
         return {};
     }
-    FfiPublicAccountKey key{};
-    const FfiOperationError error = wallet_ffi_get_public_account_key(walletHandle, &id, &key);
+    FfiSigningKeyState key{};
+    const FfiOperationError error = wallet_ffi_get_public_account_initial_key(walletHandle, &id, &key);
     if (error != FfiOperationError_Success) {
-        fprintf(stderr, "get_public_account_key: wallet FFI error %d\n", error);
+        fprintf(stderr, "get_public_account_initial_key: wallet FFI error %d\n", error);
         return {};
     }
-    return bytes32ToHex(key.public_key);
+    // Schnorr is the only key type, so the commitment alone identifies the key.
+    return bytes32ToHex(key.key_commitment);
 }
 
 std::string LEZCoreModule::get_private_account_keys(const std::string& account_id_hex) {
@@ -972,73 +973,54 @@ bool LEZCoreModule::poll_transaction_status(const std::string& tx_hash_hex) {
 
 // === Wallet Lifecycle ===
 
-// Rewrites the "home" field of the sequencer config so the DB lives in the
-// module's own directory. Returns false (and logs) on any failure.
-bool LEZCoreModule::override_sequencer_home(const std::string& config_path) {
-    try {
-        nlohmann::json cfg;
-        {
-            std::ifstream in(config_path);
-            if (!in) {
-                fprintf(stderr, "override_sequencer_home: cannot open %s\n", config_path.c_str());
-                return false;
-            }
-            cfg = nlohmann::json::parse(in);
-        }
+// Both pass `json_args` through: core_ffi parses it, refusing unknown fields, and logs why.
 
-        const std::string home = sequencer_dir();
-
-        cfg["home"] = home;
-
-        // Write to a temp file and rename, so a crash mid-write can't leave
-        // a truncated config behind.
-        const std::string tmp_path = config_path + ".tmp";
-        {
-            std::ofstream out(tmp_path, std::ios::trunc);
-            if (!out) {
-                fprintf(stderr, "override_sequencer_home: cannot write %s\n", tmp_path.c_str());
-                return false;
-            }
-            out << cfg.dump(2) << '\n';
-            if (!out) {
-                fprintf(stderr, "override_sequencer_home: write failed for %s\n", tmp_path.c_str());
-                return false;
-            }
-        }
-
-        std::error_code ec;
-        std::filesystem::rename(tmp_path, config_path, ec);
-        if (ec) {
-            fprintf(stderr, "override_sequencer_home: rename failed: %s\n", ec.message().c_str());
-            std::filesystem::remove(tmp_path, ec);
-            return false;
-        }
-        return true;
-    } catch (const std::exception& e) {
-        fprintf(stderr, "override_sequencer_home: %s\n", e.what());
-        return false;
+std::string LEZCoreModule::setup_sequencer(const std::string& home, const std::string& json_args) {
+    const std::string effective_home = home.empty() ? sequencer_dir() : home;
+    if (effective_home == LEZ_NO_WALLET_DIR) {
+        fprintf(stderr, "setup_sequencer: no home given, and no instance persistence path to default to\n");
+        return {};
     }
+
+    FfiBytes32 channel_public_key{};
+    const FfiOperationError error =
+        sequencer_ffi_setup(effective_home.c_str(), json_args.c_str(), &channel_public_key);
+    if (error != FfiOperationError_Success) {
+        fprintf(stderr, "setup_sequencer: sequencer FFI error %d\n", error);
+        return {};
+    }
+    return bytes32ToHex(channel_public_key);
 }
 
-int64_t LEZCoreModule::start_sequencer(
-    const std::string& config_path
-) {
+bool LEZCoreModule::is_sequencer_set_up(const std::string& home) {
+    const std::string effective_home = home.empty() ? sequencer_dir() : home;
+    if (effective_home == LEZ_NO_WALLET_DIR)
+        return false;
+    // `sequencer_service`'s CONFIG_FILE: setup writes it last, after the keys, and refuses a home
+    // that has it, so its presence is what "set up" means. An interrupted setup leaves it absent,
+    // and running setup again keeps the existing channel signing key.
+    std::error_code ec;
+    return std::filesystem::exists(std::filesystem::path(effective_home) / "sequencer_config.json", ec);
+}
+
+int64_t LEZCoreModule::start_sequencer(const std::string& home, const std::string& json_args) {
     if (sequencerHandle) {
         fprintf(stderr, "start_sequencer: sequencer is already started\n");
         return {};
     }
 
-    if (!override_sequencer_home(config_path)) {
-        // Failure to modify config home should not stop startup.
-        fprintf(stderr, "start_sequencer: warning: error during config home adaptation\n");
+    const std::string effective_home = home.empty() ? sequencer_dir() : home;
+    if (effective_home == LEZ_NO_WALLET_DIR) {
+        fprintf(stderr, "start_sequencer: no home given, and no instance persistence path to default to\n");
+        return FfiOperationError_InvalidArgument;
     }
 
-    InitializedSequencerServiceFFIResult start_result =
-        sequencer_ffi_start_sequencer(
-            // Null pointer to produce new runtime.
-            nullptr,
-            config_path.c_str()
-        );
+    InitializedSequencerServiceFFIResult start_result = sequencer_ffi_start_sequencer(
+        // Null pointer to produce new runtime.
+        nullptr,
+        effective_home.c_str(),
+        json_args.c_str()
+    );
     if (!start_result.value) {
         fprintf(stderr, "start_sequencer: sequencer_ffi_start_sequencer returned null\n");
         return start_result.error;
@@ -1047,6 +1029,10 @@ int64_t LEZCoreModule::start_sequencer(
     sequencerHandle = start_result.value;
 
     return FfiOperationError_Success;
+}
+
+bool LEZCoreModule::sequencer_is_healthy() {
+    return sequencerHandle && sequencer_ffi_is_healthy(sequencerHandle);
 }
 
 int64_t LEZCoreModule::stop_sequencer() {
@@ -1509,17 +1495,17 @@ std::string LEZCoreModule::getStatus() {
         return {};
     }
 
-    // The FFI builds the status JSON itself (schema owned by sequencer_core), so
-    // there is nothing to marshal — copy the C string out and free it.
-    char* json = sequencer_ffi_query_status(sequencerHandle);
-    if (!json) {
-        fprintf(stderr, "getStatus failed : sequencer FFI error \n");
+    // Returned inline, nothing to free.
+    const ExecutorStatusResult res = sequencer_ffi_query_executor_status(sequencerHandle);
+    if (res.error != FfiOperationError_Success) {
+        fprintf(stderr, "getStatus failed : sequencer FFI error %d\n", res.error);
         return {};
     }
 
-    primitives_ffi_free_cstring(json);
-    // TODO: Not implemented yet. Return json string when implemented.
-    return "Not supported";
+    nlohmann::json status;
+    status["state"] = res.state == FfiExecutorState_Online ? "online" : "bootstrapping";
+    status["height"] = res.has_height ? nlohmann::json(res.height) : nlohmann::json(nullptr);
+    return jsonToCompactString(status);
 }
 
 std::string LEZCoreModule::getTransactionsByAccount(
