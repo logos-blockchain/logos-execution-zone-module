@@ -2,6 +2,7 @@
 #define LEZ_CORE_MODULE_H
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include <logos_json.h>
@@ -43,8 +44,9 @@ public:
     std::string setup_sequencer(const std::string& home, const std::string& json_args);
     /// Whether `home` (empty for `sequencer_dir()`) is set up, i.e. `setup_sequencer` wrote its config there; false without a home to check.
     bool is_sequencer_set_up(const std::string& home);
-    /// Starts the sequencer out of `home` (empty for `sequencer_dir()`), like `sequencer_service start`. `json_args` overrides its defaults, passed through to core_ffi (see `sequencer_ffi_start_sequencer`): `config`, `create_channel`, `wait_for_channel`, `channel_signing_key_file`, `funding_public_key`, `bedrock_node_url`, `channel_id`, `rpc_listen_address`, `metrics_listen_address`, `gossip_listen_addr` and `gossip_bootstrap_peers` (an array); empty for none.
+    /// Starts the sequencer out of `home` (empty for `sequencer_dir()`), like `sequencer_service start`. `json_args` overrides its defaults, passed through to core_ffi (see `sequencer_ffi_start_sequencer`): `config`, `create_channel`, `wait_for_channel`, `channel_signing_key_file`, `funding_public_key`, `bedrock_node_url`, `channel_id`, `rpc_listen_address`, `metrics_listen_address`, `gossip_listen_addr` and `gossip_bootstrap_peers` (an array); empty for none. The start runs on its own thread, since it only comes up once the Bedrock node answers (or, with `wait_for_channel`, the channel exists): a failure that shows up within a second is returned, any later one is reported by `getStatus`.
     int64_t start_sequencer(const std::string& home, const std::string& json_args);
+    /// Stopping a start that is still running makes it stop as soon as it is up.
     int64_t stop_sequencer();
     /// Whether every task of the started sequencer is still running; false when none is.
     bool sequencer_is_healthy();
@@ -79,14 +81,22 @@ public:
     int64_t get_current_block_height();
 
     // === Operations ===
+    // Every send takes two trailing arguments that apply to that call only:
+    // `fee_params_json`: "" for the wallet's defaults, or an object with any of "gas_limit",
+    //   "max_fee", "tip", "headroom_blocks" (decimal strings), "payer", "refund_to" (account ids),
+    //   "payer_is_public", and "allow_revert" (send a public transaction even if it would revert).
+    // `dry_run`: simulate instead of sending; the result has an empty "tx_hash".
+    // Every result carries "is_dry_run", "dry_run" (the simulation report, else null) and "fee"
+    // (what the send declared or would declare, else null).
+    std::string get_fee_state();
     // A fresh public account is claimed by its first funded transfer (`to` owned by
     // this wallet); there is no separate registration under fees.
-    std::string transfer_public(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
-    std::string transfer_shielded(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex);
-    std::string transfer_deshielded(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
-    std::string transfer_private(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex);
-    std::string transfer_shielded_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
-    std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex);
+    std::string transfer_public(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex, const std::string& fee_params_json, bool dry_run);
+    std::string transfer_shielded(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex, const std::string& fee_params_json, bool dry_run);
+    std::string transfer_deshielded(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex, const std::string& fee_params_json, bool dry_run);
+    std::string transfer_private(const std::string& from_hex, const std::string& to_keys_json, const std::string& amount_le16_hex, const std::string& fee_params_json, bool dry_run);
+    std::string transfer_shielded_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex, const std::string& fee_params_json, bool dry_run);
+    std::string transfer_private_owned(const std::string& from_hex, const std::string& to_hex, const std::string& amount_le16_hex, const std::string& fee_params_json, bool dry_run);
 
     // `message` uses a byte-string (`bstr`) IPC type so the auto-generated
     // Qt/QtRO glue can serialize it across the module process boundary. Declaring
@@ -101,13 +111,13 @@ public:
     //
     // `actor_state_program_account_ids_hex` selects which program's actor_state of each account the call
     // sees: empty, or one entry per account, where "" means the called program's actor_state.
-    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const uint64_t root_mention, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& message, const std::string& payer_account_id_hex, const std::vector<std::string>& actor_state_program_account_ids_hex);
+    std::string send_generic_public_transaction(const std::vector<std::string>& account_ids, const uint64_t root_mention, const std::vector<bool>& signing_requirements, const std::vector<uint8_t>& message, const std::string& payer_account_id_hex, const std::vector<std::string>& actor_state_program_account_ids_hex, const std::string& fee_params_json, bool dry_run);
     // `program_kind_json` and each `dependency_kinds_json` entry (same order as `program_dependencies`)
     // is {"kind": "disclosed"|"shadow"|"undisclosed", "account_id": hex}; "account_id" is optional
     // for shadow, and "undisclosed" also takes "program_header": {"image_id_hex",
     // "program_first_segment_hex", "immutable"} and "membership_proof": {"index", "path": [hex, ...]}.
     // An empty `program_elf` runs the disclosed program at "account_id" natively.
-    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const uint64_t root_mention, const std::vector<uint8_t>& message, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& actor_state_program_account_ids_hex);
+    std::string send_generic_private_transaction(const std::vector<std::string>& account_ids, const uint64_t root_mention, const std::vector<uint8_t>& message, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& actor_state_program_account_ids_hex, const std::string& fee_params_json, bool dry_run);
     // Like `send_generic_private_transaction`, but each account is described rather than assumed to
     // be one of this wallet's private accounts, so a private transaction can also mention public
     // accounts and create accounts for other users. Each `accounts_json` entry is one of
@@ -117,7 +127,7 @@ public:
     //   {"kind": "private_foreign", "nullifier_public_key": hex, "viewing_public_key": hex} a new private account under another user's keys
     // "private_foreign" takes the keys as `get_private_account_keys` returns them;
     // The other arguments are as for `send_generic_private_transaction`.
-    std::string send_generic_private_transaction_with_accounts(const std::vector<std::string>& accounts_json, const uint64_t root_mention, const std::vector<uint8_t>& message, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& actor_state_program_account_ids_hex);
+    std::string send_generic_private_transaction_with_accounts(const std::vector<std::string>& accounts_json, const uint64_t root_mention, const std::vector<uint8_t>& message, const std::vector<uint8_t>& program_elf, const std::string& program_kind_json, const std::vector<std::vector<uint8_t>>& program_dependencies, const std::vector<std::string>& dependency_kinds_json, const std::vector<std::string>& actor_state_program_account_ids_hex, const std::string& fee_params_json, bool dry_run);
     // Deploys `program_elf` via `program_loader`: one write-once segment account per
     // 96 KiB chunk of the ELF (in chain order), plus a header account pointing at the
     // chain. The wallet must hold the signing keys for every account passed in.
@@ -125,12 +135,12 @@ public:
     // Every deploy account is fresh and unfunded, so `payer_account_id_hex` must name a
     // funded public account whose key the wallet holds; it co-signs the fee. Empty
     // falls back to self-pay, which the sequencer rejects with PayerCannotFund.
-    std::string send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex);
+    std::string send_program_deployment_transaction(const std::string& header_account_id_hex, const std::vector<std::string>& segment_account_ids_hex, const std::vector<uint8_t>& program_elf, bool immutable, const std::string& payer_account_id_hex, const std::string& fee_params_json, bool dry_run);
 
     bool poll_transaction_status(const std::string& tx_hash_hex);
 
     // === Bridge (L1 Bedrock <-> L2) ===
-    std::string bridge_withdraw(const std::string& from_hex, const std::string& bedrock_account_pk_hex, uint64_t amount);
+    std::string bridge_withdraw(const std::string& from_hex, const std::string& bedrock_account_pk_hex, uint64_t amount, const std::string& fee_params_json, bool dry_run);
 
     // === Configuration ===
     std::string get_sequencer_addr();
@@ -156,12 +166,14 @@ public:
     std::string getBlocks(const std::string& before, const std::string& limit);
     /// Tip block id as a bare decimal string.
     std::string getLastFinalizedBlockId();
-    /// Current ingestion status of an underlying sequencer, as
-    /// `{"state": "bootstrapping"|"online", "height": <n>|null}`. Empty string if the
-    /// sequencer isn't running.
+    /// Executor status as JSON: { state: "Bootstrapping"|"Online", height, target_slot,
+    /// replayed_up_to_slot, is_our_turn }; the numbers are decimal strings or null.
+    /// Before the executor is up: { state: "Starting" }, or { state: "StartFailed", error_code }
+    /// after a failed start. Empty string if the sequencer was never started or was stopped.
     std::string getStatus();
     /// Transactions touching `account_id` (Base58 or 32-byte hex), paginated by
-    /// decimal `offset`/`limit`.
+    /// decimal `offset`/`limit`. As with `getTransaction`, each carries the
+    /// `block_id` it is in and its `receipt`.
     //
     // MUST stay on a single line: the universal `--header-to-lidl` parser drops
     // methods whose parameter list spans multiple lines, so a wrapped signature
@@ -171,8 +183,19 @@ public:
     std::string getTransactionsByAccount(const std::string& account_id, const std::string& offset, const std::string& limit);
 
 private:
+    struct SequencerStart;
+    // Takes over the sequencer of a start that has finished, waiting up to `wait_ms` for it.
+    void adoptSequencerStart(int64_t wait_ms);
+    // Whether a start is still running, stopped or not. It holds the storage open until it ends.
+    bool sequencerStartInFlight();
+
     WalletHandle* walletHandle = nullptr;
     SequencerServiceFFI* sequencerHandle = nullptr;
+    // A start still running on its own thread.
+    std::shared_ptr<SequencerStart> pendingStart;
+    // A start that was stopped before it finished; it holds the storage until it does.
+    std::shared_ptr<SequencerStart> abandonedStart;
+    int64_t lastStartError = 0;
 };
 // clang-format on
 

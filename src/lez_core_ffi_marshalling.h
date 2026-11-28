@@ -88,7 +88,11 @@ namespace marshalling {
     bool accountStrToBytes32(const std::string& account_id, FfiBytes32* out);
 
     nlohmann::json ffiTransactionToJson(const FfiTransaction& tx);
+    // Each transaction carries its `receipt`; null for the trailing fee and clock transactions.
     nlohmann::json ffiBlockToJson(const FfiBlock& block);
+    // { state: "Bootstrapping"|"Online", height, target_slot, replayed_up_to_slot, is_our_turn };
+    // the three numbers are decimal strings, or null when the executor does not report them.
+    nlohmann::json executorStatusToJson(const ExecutorStatusResult& status);
 
     // Compact serialization (no spaces/newlines) of an object or array.
     std::string jsonToCompactString(const nlohmann::json& j);
@@ -101,6 +105,12 @@ namespace marshalling {
     bool hexToU128(const std::string& hex, uint8_t (*output)[16]);
     std::string bytes32ToHex(const FfiBytes32& bytes);
 
+    // Parses a send's fee overrides (keys as documented on the send methods). Every key is
+    // optional; an unknown key is an error, so a typo cannot silently fall back to the defaults.
+    bool jsonToFeeParams(const std::string& json, FfiFeeParams* out, bool* out_allow_revert, std::string* out_error);
+    nlohmann::json feeStateToJson(const FfiFeeState& state);
+
+    // Both result builders also emit `is_dry_run`, `dry_run` and `fee`.
     // Builds JSON { success, tx_hash, error } for both success (result + empty error) and failure (nullptr +
     // errorMessage).
     std::string transferResultToJson(const FfiTransferResult* result, const std::string& errorMessage);
